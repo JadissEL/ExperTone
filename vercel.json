@@ -1,0 +1,10 @@
+{
+  "buildCommand": "prisma generate && next build",
+  "framework": "nextjs",
+  "installCommand": "npm install",
+  "crons": [
+    { "path": "/api/cron/expire-ownership", "schedule": "0 2 * * *" },
+    { "path": "/api/cron/optimize-iq", "schedule": "0 3 * * 0" },
+    { "path": "/api/cron/no-spam-auditor", "schedule": "0 4 * * 0" }
+  ]
+}

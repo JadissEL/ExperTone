@@ -1,0 +1,77 @@
+name: CI
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+
+jobs:
+  frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run ESLint
+        run: npm run lint
+
+      - name: Run TypeScript check
+        run: npx tsc --noEmit
+
+      - name: Run Jest
+        run: npm test -- --passWithNoTests
+
+      - name: npm audit
+        run: npm audit --audit-level=high
+        continue-on-error: true
+
+  ml-service:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          cd ml-service
+          pip install -r requirements.txt
+
+      - name: Run Ruff
+        run: |
+          cd ml-service
+          python -m ruff check .
+
+      - name: Run Black check
+        run: |
+          cd ml-service
+          python -m black --check .
+
+      - name: Run MyPy
+        run: |
+          cd ml-service
+          python -m mypy . --ignore-missing-imports
+
+      - name: Run Pytest
+        run: |
+          cd ml-service
+          python -m pytest -v --tb=short
+
+      - name: Run Bandit
+        run: |
+          cd ml-service
+          python -m bandit -c pyproject.toml -r . -x ./tests
+        continue-on-error: true

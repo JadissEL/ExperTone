@@ -1,0 +1,61 @@
+{
+  "nodes": [
+    {
+      "id": "expert_abc123",
+      "label": "Jane Smith",
+      "group": "expert",
+      "val": 12,
+      "community": 0
+    },
+    {
+      "id": "expert_def456",
+      "label": "John Doe",
+      "group": "expert",
+      "val": 8,
+      "community": 0
+    },
+    {
+      "id": "company_Goldman_Sachs",
+      "label": "Goldman Sachs",
+      "group": "company",
+      "val": 25,
+      "community": 0
+    },
+    {
+      "id": "company_McKinsey",
+      "label": "McKinsey",
+      "group": "company",
+      "val": 18,
+      "community": 0
+    },
+    {
+      "id": "skill_M&A",
+      "label": "M&A",
+      "group": "skill",
+      "val": 3,
+      "community": 1
+    }
+  ],
+  "links": [
+    {
+      "source": "expert_abc123",
+      "target": "company_Goldman_Sachs",
+      "type": "ALUMNI"
+    },
+    {
+      "source": "expert_abc123",
+      "target": "company_McKinsey",
+      "type": "ALUMNI"
+    },
+    {
+      "source": "expert_def456",
+      "target": "company_Goldman_Sachs",
+      "type": "ALUMNI"
+    },
+    {
+      "source": "expert_abc123",
+      "target": "skill_M&A",
+      "type": "HAS_SKILL"
+    }
+  ]
+}

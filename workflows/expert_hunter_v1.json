@@ -1,0 +1,585 @@
+{
+  "name": "Expert Hunter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hunt",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "webhook-hunt",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 400]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst projectId = body.projectId ?? body.project_id ?? '';\nconst query = body.query ?? '';\nconst filterCriteria = body.filterCriteria ?? body.filter_criteria ?? {};\nconst projectTitle = body.projectTitle ?? body.project_title ?? 'Untitled Hunt';\nlet experts = body.experts;\nif (!Array.isArray(experts) || experts.length === 0) {\n  const name = (body.expertName ?? body.expert_name ?? '').toString().trim();\n  experts = name ? [{ name, company: body.company ?? '', title: body.title ?? '', location: body.location ?? body.filterCriteria?.countries?.[0] ?? '', industry: body.industry ?? body.filterCriteria?.industry ?? 'Other' }] : [];\n}\nconst base = { projectId, query, filterCriteria, projectTitle };\nif (experts.length === 0) return [{ json: { ...base, expertName: '', company: '', title: '', location: '', industry: 'Other' } }];\nreturn experts.map(e => ({ json: { ...base, expertName: (e.name || '').toString().trim(), company: e.company ?? '', title: e.title ?? '', location: e.location ?? '', industry: e.industry ?? 'Other' } }));"
+      },
+      "id": "extract-input",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [460, 400],
+      "notesInFlow": true,
+      "notes": "Supports body.experts[] (batch) or body.expertName (single)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            { "id": "collect-mode", "leftValue": "={{ $json.expertName }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-mode",
+      "name": "Collect Mode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [680, 400],
+      "notesInFlow": true,
+      "notes": "expertName present = collect & enrich; else = ML rank only"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            { "id": "has-project", "leftValue": "={{ $json.projectId }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } },
+            { "id": "has-name", "leftValue": "={{ $json.expertName }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-valid-collect",
+      "name": "Valid Collect Input?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const name = $input.first().json.expertName || '';\nconst company = $input.first().json.company || '';\nconst title = $input.first().json.title || '';\nconst location = $input.first().json.location || '';\nconst industry = $input.first().json.industry || '';\nconst linkedInQuery = `\"${name}\" site:linkedin.com/in`;\nconst contextParts = [company, title, location, industry].filter(Boolean);\nconst contextStr = contextParts.length ? contextParts.join(' ') : '';\nconst publicQuery = contextStr ? `\"${name}\" ${contextStr}` : `\"${name}\"`;\nreturn [{ json: { ...($input.first().json), linkedInQuery, publicQuery } }];"
+      },
+      "id": "build-queries",
+      "name": "Build Search Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1120, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/customsearch/v1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "key", "value": "={{ $env.GOOGLE_API_KEY }}", "parameterType": "query" },
+            { "name": "cx", "value": "={{ $env.GOOGLE_CSE_ID }}", "parameterType": "query" },
+            { "name": "q", "value": "={{ $json.linkedInQuery }}", "parameterType": "query" },
+            { "name": "num", "value": 5, "parameterType": "query" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "google-linkedin",
+      "name": "Google Search - LinkedIn URL",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1340, 200],
+      "notesInFlow": true,
+      "notes": "Finds LinkedIn URL only. Do NOT scrape LinkedIn."
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst items = data?.items || [];\nconst linkedInUrl = items.find(i => i.link && i.link.includes('linkedin.com/in/'))?.link || null;\nconst ctx = $('Build Search Queries').first().json;\nreturn [{ json: { ...ctx, linkedInUrl, _linkedInFound: !!linkedInUrl } }];"
+      },
+      "id": "parse-linkedin-url",
+      "name": "Parse LinkedIn URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1560, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst name = (ctx.expertName || '').replace(/\"/g, '');\nconst parts = [ctx.company, ctx.title, ctx.location, ctx.industry].filter(Boolean);\nconst main = parts.length ? `\"${name}\" ${parts.join(' ')}` : `\"${name}\"`;\nreturn [\n  { json: { ...ctx, publicQuery: main } },\n  { json: { ...ctx, publicQuery: `\"${name}\" interview` } },\n  { json: { ...ctx, publicQuery: `\"${name}\" conference speaker` } }\n];"
+      },
+      "id": "build-public-queries",
+      "name": "Build Public Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1670, 200],
+      "notesInFlow": true,
+      "notes": "Multiple queries: main, interview, conference"
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://www.googleapis.com/customsearch/v1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            { "name": "key", "value": "={{ $env.GOOGLE_API_KEY }}", "parameterType": "query" },
+            { "name": "cx", "value": "={{ $env.GOOGLE_CSE_ID }}", "parameterType": "query" },
+            { "name": "q", "value": "={{ $json.publicQuery }}", "parameterType": "query" },
+            { "name": "num", "value": 10, "parameterType": "query" }
+          ]
+        },
+        "options": { "timeout": 10000 }
+      },
+      "id": "google-public",
+      "name": "Google Search - Public Sources",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1780, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse LinkedIn URL').first().json;\nconst all = $input.all();\nconst BLOCKED = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com'];\nconst urls = [...new Set(all.flatMap(i => (i.json?.items || []).map(x => x.link).filter(Boolean)))];\nconst allowed = urls.filter(u => { try { const h = new URL(u).hostname.toLowerCase(); return !BLOCKED.some(d => h.includes(d)); } catch { return false; } }).slice(0, 20);\nreturn allowed.map(url => ({ json: { ...ctx, _url: url, _domain: (() => { try { return new URL(url).hostname; } catch { return ''; } })(), _path: (() => { try { return new URL(url).pathname || '/'; } catch { return '/'; } })() } }));"
+      },
+      "id": "merge-google-results",
+      "name": "Merge Google Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [1890, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "=https://{{ $json._domain }}/robots.txt",
+        "options": { "timeout": 5000, "response": { "response": { "responseFormat": "text" } } }
+      },
+      "id": "fetch-robots",
+      "name": "Fetch robots.txt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2220, 200]
+    },
+    {
+      "parameters": { "mode": "combine", "combinationMode": "multiplex", "options": {} },
+      "id": "merge-robots",
+      "name": "Merge Robots",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2330, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first();\nconst robotsTxt=(item.json?.data||item.json?.body||'').toString();\nconst url=item.json._url;const path=item.json._path||'/';\nconst ctx={...item.json};delete ctx.data;delete ctx.body;\nfunction allowed(r,p){if(!r||!r.trim())return true;\nconst lines=r.split(/\\r?\\n/);let cur=null,ok=true;\nfor(const l of lines){const m=l.match(/^User-agent:\\s*(.+)/i);if(m){cur=m[1].trim().toLowerCase();}\nif(cur==='*'||!cur){const d=l.match(/^Disallow:\\s*(.+)/i);const a=l.match(/^Allow:\\s*(.+)/i);\nif(d){const pat=d[1].trim();if(pat==='/'){ok=false;break;}if(pat&&p.startsWith(pat.replace(/\\*$/,'')))ok=false;}\nif(a){const pat=a[1].trim();if(pat&&p.startsWith(pat.replace(/\\*$/,'')))ok=true;}}}\nreturn ok;}\nreturn[{json:{...ctx,_url:url,_path:path,_scrapeAllowed:allowed(robotsTxt,path)}}];"
+      },
+      "id": "check-robots",
+      "name": "Check robots.txt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2440, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            { "id": "allowed", "leftValue": "={{ $json._scrapeAllowed }}", "rightValue": true, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-allowed",
+      "name": "Scraping Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [2660, 200]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $json._url }}",
+        "options": { "timeout": 8000, "response": { "response": { "responseFormat": "text" } } }
+      },
+      "id": "scrape-page",
+      "name": "Scrape Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [2880, 100]
+    },
+    {
+      "parameters": { "mode": "combine", "combinationMode": "multiplex", "options": {} },
+      "id": "merge-context",
+      "name": "Merge Context",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [2990, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first();\nconst html=(item.json?.data??item.json?.body??'').toString();\nconst sourceUrl=item.json._url||'';\nconst ctx=$('Check robots.txt').first().json;\nconst expertName=(ctx.expertName||'').toLowerCase();\nfunction ext(h,r){const m=h.match(r);return m?m[1].replace(/<[^>]+>/g,'').trim().slice(0,500):null;}\nconst title=ext(html,/<title[^>]*>([\\s\\S]*?)<\\/title>/i)||ext(html,/<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"/i);\nconst desc=ext(html,/<meta[^>]+name=[\"']description[\"'][^>]+content=\"([^\"]+)\"/i);\nconst emails=(html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g)||[]).slice(0,3);\nconst liRef=(html.match(/https?:\\/\\/(?:www\\.)?linkedin\\.com\\/in\\/[a-zA-Z0-9_-]+/g)||[])[0]||null;\nlet role=null,company=null;\nconst rm=html.match(/(?:role|title|position|job)[\\s:=]+[\"']?([^\"'<>,]+)/gi);if(rm)role=rm[0].replace(/^(?:role|title|position|job)[\\s:=]+[\"']?/i,'').trim().slice(0,200);\nconst cm=html.match(/(?:company|employer|organization|at)\\s+(?:the\\s+)?[\"']?([^\"'<>,]+)/gi);if(cm)company=cm[0].replace(/^(?:company|employer|organization|at)\\s+(?:the\\s+)?[\"']?/i,'').trim().slice(0,200);\nconst body=html.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi,'').replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').slice(0,5000);\nconst mentions=expertName&&body.toLowerCase().includes(expertName.split(' ')[0]);\nlet achievements=[];try{const ldMatch=html.match(/<script[^>]+type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/i);if(ldMatch){const ld=JSON.parse(ldMatch[1].trim());const arr=Array.isArray(ld)?ld:[ld];const person=arr.find(x=>x['@type']==='Person');if(person&&person.jobTitle)role=role||person.jobTitle;if(person&&person.worksFor)company=company||(person.worksFor.name||person.worksFor);}\nconst sentences=body.match(/[^.!?]*(?:award|speaker|keynote|panel|presented|published)[^.!?]*[.!?]/gi)||[];achievements=sentences.slice(0,3).map(s=>s.trim().slice(0,200));}catch(e){}\nreturn[{json:{sourceUrl,title,description:desc,role,company,emails:[...new Set(emails)],linkedInUrlRef:liRef,mentionsTarget:mentions,achievements,_context:ctx}}];"
+      },
+      "id": "extract-data",
+      "name": "Extract Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3110, 100]
+    },
+    {
+      "parameters": { "mode": "combine", "combinationMode": "multiplex", "options": {} },
+      "id": "merge-scraped",
+      "name": "Merge Scraped",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [3220, 200]
+    },
+    {
+      "parameters": { "assignments": { "assignments": [{ "id": "placeholder", "name": "placeholder", "value": "={{ $json }}", "type": "object" }] }, "options": {} },
+      "id": "no-scrape-fallback",
+      "name": "No Scrape Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [2880, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items=$input.all();\nconst scraped=items.filter(i=>i.json.sourceUrl&&!i.json.placeholder);\nconst ctx=scraped[0]?.json?._context||$('Parse LinkedIn URL').first().json;\nconst expertName=(ctx.expertName||'').trim();\nconst seedCo=(ctx.company||'').toLowerCase();\nconst seedTi=(ctx.title||'').toLowerCase();\nconst records=scraped.map(s=>({sourceUrl:s.json.sourceUrl,title:s.json.title,description:s.json.description,role:s.json.role,company:s.json.company,emails:s.json.emails||[],linkedInRef:s.json.linkedInUrlRef,mentionsTarget:s.json.mentionsTarget,achievements:s.json.achievements||[]}));\nlet conf=0.5,conflict=0;\nconst reasons=[];\nconst companies=[...new Set(records.map(r=>r.company).filter(Boolean))];\nconst roles=[...new Set(records.map(r=>r.role).filter(Boolean))];\nif(companies.length===1&&seedCo&&companies[0]?.toLowerCase().includes(seedCo)){conf+=0.2;reasons.push('company_match');}\nif(roles.length===1&&seedTi&&roles[0]?.toLowerCase().includes(seedTi)){conf+=0.15;reasons.push('title_match');}\nif(records.some(r=>r.mentionsTarget)){conf+=0.15;reasons.push('name_mentioned');}\nif(records.length>=2){conf+=0.1;reasons.push('multiple_sources');}\nif(companies.length>2&&!seedCo)conflict++;\nconst filtered=records.filter(r=>r.mentionsTarget||r.title||r.description);\nconst emails=[...new Set(filtered.flatMap(r=>r.emails))].slice(0,5);\nconst career=[...new Set(filtered.map(r=>r.role&&r.company?`${r.role} at ${r.company}`:r.role||r.company).filter(Boolean))].slice(0,10);\nconst rawPubs=filtered.filter(r=>r.title).map(r=>({title:(r.title||'').trim(),url:r.sourceUrl}));\nconst seen=new Set();\nconst pubs=rawPubs.filter(p=>{const k=(p.title||'').toLowerCase().slice(0,100);if(seen.has(k))return false;seen.add(k);return true;}).slice(0,10);\nconst sources=[...new Set(filtered.map(r=>r.sourceUrl))];\nconst liUrl=ctx.linkedInUrl||filtered.find(r=>r.linkedInRef)?.linkedInRef||null;\nconst social=liUrl?[{type:'linkedin',url:liUrl}]:[];\nconst expertise=[ctx.industry].filter(Boolean);if(roles.length)expertise.push(...roles.slice(0,3));\nreturn[{json:{fullName:expertName,currentRole:roles[0]||null,currentCompany:companies[0]||null,careerHistory:career,publications:pubs,socialProfiles:social,expertise:[...new Set(expertise)].slice(0,5),contactInfo:emails.map(e=>({type:'email',value:e})),sourceUrls:sources,identityConfidence:Math.min(1,conf),confidenceReasons:reasons,ambiguous:conflict>0||companies.length>2,notableAchievements:(records.flatMap(r=>r.achievements||[]).filter(Boolean)).slice(0,5),_context:ctx}}];"
+      },
+      "id": "disambiguate-aggregate",
+      "name": "Disambiguate & Aggregate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3330, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            { "id": "has-sources", "leftValue": "={{ ($json.sourceUrls || []).length }}", "rightValue": 0, "operator": { "type": "number", "operation": "gt" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-has-sources",
+      "name": "Has Sources?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3440, 200]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nconst conf=item.identityConfidence??0.5;\nconst amb=item.ambiguous??false;\nif(conf<0.4)return[{json:{...item,_discarded:true,_reason:'low_confidence'}}];\nconst expert={name:item.fullName,industry:item._context?.industry||'Other',sub_industry:item.expertise?.[0]||'General',country:item._context?.location||'Unknown',region:item._context?.location||'Unknown',seniority_score:50,years_experience:5,predicted_rate:150,contacts:item.contactInfo||[],_meta:{identityConfidence:conf,ambiguous:amb,confidenceReasons:item.confidenceReasons||[],linkedInUrl:item.socialProfiles?.find(s=>s.type==='linkedin')?.url||null,sourceUrls:item.sourceUrls||[],careerHistory:item.careerHistory||[],publications:item.publications||[]}};\nreturn[{json:{...item,expert,_discarded:false}}];"
+      },
+      "id": "quality-control",
+      "name": "Quality Control",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3550, 100]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            { "id": "keep", "leftValue": "={{ $json._discarded }}", "rightValue": false, "operator": { "type": "boolean", "operation": "equals" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-keep",
+      "name": "Keep Result?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [3660, 100]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst projectId = items[0]?.json?._context?.projectId || items[0]?.json?.projectId || '';\nconst experts = items.map(i => i.json.expert).filter(Boolean).map(e => ({ name: e.name, industry: e.industry, sub_industry: e.sub_industry, country: e.country, region: e.region, seniority_score: e.seniority_score, years_experience: e.years_experience, predicted_rate: e.predicted_rate, contacts: e.contacts || [] }));\nconst payload = { projectId, experts, status: 'complete', complete: true };\nreturn [{ json: { payload, projectId } }];"
+      },
+      "id": "format-callback",
+      "name": "Format Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3770, 0]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nconst bodyString=JSON.stringify(item.payload);\nconst secret=$env.SHARED_SECRET||$env.N8N_WEBHOOK_SECRET||'';\nlet sig='';\nif(secret){const c=require('crypto');sig=c.createHmac('sha256',secret).update(bodyString).digest('hex');}\nreturn[{json:{bodyString,signature:sig,projectId:item.projectId}}];"
+      },
+      "id": "sign-payload",
+      "name": "Sign Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3880, 0]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.APP_URL || 'http://host.docker.internal:3000' }}/api/webhooks/n8n-callback",
+        "sendBody": true,
+        "specifyBody": "raw",
+        "contentType": "json",
+        "body": "={{ $json.bodyString }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "Content-Type", "value": "application/json" },
+            { "name": "X-Webhook-Signature", "value": "={{ $json.signature }}" }
+          ]
+        },
+        "options": { "timeout": 15000 }
+      },
+      "id": "post-callback",
+      "name": "POST Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [3990, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "status", "name": "status", "value": "success", "type": "string" },
+            { "id": "projectId", "name": "projectId", "value": "={{ $json.projectId ?? $('Format Callback').first().json.projectId ?? $('Minimal Callback').first().json.projectId }}", "type": "string" },
+            { "id": "expert", "name": "expert", "value": "={{ ($('Format Callback').first().json?.payload?.experts ?? $('Minimal Callback').first().json?.payload?.experts ?? [])[0] }}", "type": "object" },
+            { "id": "timestamp", "name": "timestamp", "value": "={{ $now.toISO() }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-collect-response",
+      "name": "Format Collect Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [4100, 0]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "status", "name": "status", "value": "skipped", "type": "string" },
+            { "id": "message", "name": "message", "value": "Provide projectId and expertName for collect mode.", "type": "string" },
+            { "id": "projectId", "name": "projectId", "value": "={{ $('Extract Input').first().json.projectId }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "invalid-collect-fallback",
+      "name": "Invalid Collect Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 400]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "status", "name": "status", "value": "no_public_sources", "type": "string" },
+            { "id": "message", "name": "message", "value": "No scrapable public sources or all blocked by robots.txt.", "type": "string" },
+            { "id": "projectId", "name": "projectId", "value": "={{ $('Extract Input').first().json.projectId }}", "type": "string" },
+            { "id": "linkedInUrl", "name": "linkedInUrl", "value": "={{ $('Parse LinkedIn URL').first().json.linkedInUrl }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "no-sources-fallback",
+      "name": "No Sources Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [3550, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse LinkedIn URL').first().json;\nconst projectId = ctx.projectId || '';\nconst payload = { projectId, experts: [{ name: ctx.expertName || '', industry: ctx.industry || 'Other', sub_industry: 'General', country: ctx.location || 'Unknown', region: ctx.location || 'Unknown', seniority_score: 50, years_experience: 5, predicted_rate: 150, contacts: [] }], status: 'complete', complete: true };\nreturn [{ json: { payload, projectId } }];"
+      },
+      "id": "minimal-callback",
+      "name": "Minimal Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3660, 350],
+      "notesInFlow": true,
+      "notes": "When no scrapable sources: still send expert from input"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "status", "name": "status", "value": "discarded", "type": "string" },
+            { "id": "message", "name": "message", "value": "Result discarded (low identity confidence).", "type": "string" },
+            { "id": "projectId", "name": "projectId", "value": "={{ $('Extract Input').first().json.projectId }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "discarded-fallback",
+      "name": "Discarded Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [3770, 200]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            { "id": "has-project", "leftValue": "={{ $json.projectId }}", "rightValue": "", "operator": { "type": "string", "operation": "notEmpty" } }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "if-project",
+      "name": "Has Project ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [900, 500]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://host.docker.internal:8000/rank",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $json.projectId }) }}",
+        "options": { "timeout": 30000 }
+      },
+      "id": "call-ml-rank",
+      "name": "ML Rank Experts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [1120, 600],
+      "notesInFlow": true,
+      "notes": "Calls ML service when no expertName (rank mode)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "status", "name": "status", "value": "no_project", "type": "string" },
+            { "id": "message", "name": "message", "value": "Provide projectId to rank experts.", "type": "string" },
+            { "id": "ranked_experts", "name": "ranked_experts", "value": [], "type": "array" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "no-project-fallback",
+      "name": "No Project Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1120, 700]
+    },
+    {
+      "parameters": { "mode": "combine", "combinationMode": "multiplex", "options": {} },
+      "id": "merge-branches",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [1340, 600]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            { "id": "status", "name": "status", "value": "={{ $json.ranked_experts ? 'success' : $json.status }}", "type": "string" },
+            { "id": "project_id", "name": "project_id", "value": "={{ $json.project_id ?? $('Extract Input').first().json.projectId }}", "type": "string" },
+            { "id": "ranked_experts", "name": "ranked_experts", "value": "={{ $json.ranked_experts ?? $json.rankedExperts ?? [] }}", "type": "array" },
+            { "id": "count", "name": "count", "value": "={{ ($json.ranked_experts ?? $json.rankedExperts ?? []).length }}", "type": "number" },
+            { "id": "timestamp", "name": "timestamp", "value": "={{ $now.toISO() }}", "type": "string" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "format-rank-response",
+      "name": "Format Rank Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [1560, 600]
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{ $json }}", "options": {} },
+      "id": "respond-webhook",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [4300, 400]
+    }
+  ],
+  "connections": {
+    "Webhook": { "main": [[{ "node": "Extract Input", "type": "main", "index": 0 }]] },
+    "Extract Input": { "main": [[{ "node": "Collect Mode?", "type": "main", "index": 0 }]] },
+    "Collect Mode?": {
+      "main": [
+        [{ "node": "Valid Collect Input?", "type": "main", "index": 0 }],
+        [{ "node": "Has Project ID?", "type": "main", "index": 0 }]
+      ]
+    },
+    "Valid Collect Input?": {
+      "main": [
+        [{ "node": "Build Search Queries", "type": "main", "index": 0 }],
+        [{ "node": "Invalid Collect Fallback", "type": "main", "index": 0 }]
+      ]
+    },
+    "Build Search Queries": { "main": [[{ "node": "Google Search - LinkedIn URL", "type": "main", "index": 0 }]] },
+    "Google Search - LinkedIn URL": { "main": [[{ "node": "Parse LinkedIn URL", "type": "main", "index": 0 }]] },
+    "Parse LinkedIn URL": { "main": [[{ "node": "Build Public Queries", "type": "main", "index": 0 }]] },
+    "Build Public Queries": { "main": [[{ "node": "Google Search - Public Sources", "type": "main", "index": 0 }]] },
+    "Google Search - Public Sources": { "main": [[{ "node": "Merge Google Results", "type": "main", "index": 0 }]] },
+    "Merge Google Results": {
+      "main": [
+        [{ "node": "Fetch robots.txt", "type": "main", "index": 0 }],
+        [{ "node": "Merge Robots", "type": "main", "index": 0 }]
+      ]
+    },
+    "Fetch robots.txt": { "main": [[{ "node": "Merge Robots", "type": "main", "index": 1 }]] },
+    "Merge Robots": { "main": [[{ "node": "Check robots.txt", "type": "main", "index": 0 }]] },
+    "Check robots.txt": { "main": [[{ "node": "Scraping Allowed?", "type": "main", "index": 0 }]] },
+    "Scraping Allowed?": {
+      "main": [
+        [{ "node": "Scrape Page", "type": "main", "index": 0 }, { "node": "Merge Context", "type": "main", "index": 0 }],
+        [{ "node": "No Scrape Fallback", "type": "main", "index": 0 }]
+      ]
+    },
+    "Scrape Page": { "main": [[{ "node": "Merge Context", "type": "main", "index": 1 }]] },
+    "Merge Context": { "main": [[{ "node": "Extract Data", "type": "main", "index": 0 }]] },
+    "Extract Data": { "main": [[{ "node": "Merge Scraped", "type": "main", "index": 0 }]] },
+    "No Scrape Fallback": { "main": [[{ "node": "Merge Scraped", "type": "main", "index": 1 }]] },
+    "Merge Scraped": { "main": [[{ "node": "Disambiguate & Aggregate", "type": "main", "index": 0 }]] },
+    "Disambiguate & Aggregate": { "main": [[{ "node": "Has Sources?", "type": "main", "index": 0 }]] },
+    "Has Sources?": {
+      "main": [
+        [{ "node": "Quality Control", "type": "main", "index": 0 }],
+        [{ "node": "No Sources Fallback", "type": "main", "index": 0 }]
+      ]
+    },
+    "Quality Control": { "main": [[{ "node": "Keep Result?", "type": "main", "index": 0 }]] },
+    "Keep Result?": {
+      "main": [
+        [{ "node": "Format Callback", "type": "main", "index": 0 }],
+        [{ "node": "Discarded Fallback", "type": "main", "index": 0 }]
+      ]
+    },
+    "Format Callback": { "main": [[{ "node": "Sign Payload", "type": "main", "index": 0 }]] },
+    "Sign Payload": { "main": [[{ "node": "POST Callback", "type": "main", "index": 0 }]] },
+    "POST Callback": { "main": [[{ "node": "Format Collect Response", "type": "main", "index": 0 }]] },
+    "Format Collect Response": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] },
+    "Invalid Collect Fallback": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] },
+    "No Sources Fallback": { "main": [[{ "node": "Minimal Callback", "type": "main", "index": 0 }]] },
+    "Minimal Callback": { "main": [[{ "node": "Sign Payload", "type": "main", "index": 0 }]] },
+    "Discarded Fallback": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] },
+    "Has Project ID?": {
+      "main": [
+        [{ "node": "ML Rank Experts", "type": "main", "index": 0 }],
+        [{ "node": "No Project Fallback", "type": "main", "index": 0 }]
+      ]
+    },
+    "ML Rank Experts": { "main": [[{ "node": "Merge", "type": "main", "index": 0 }]] },
+    "No Project Fallback": { "main": [[{ "node": "Merge", "type": "main", "index": 1 }]] },
+    "Merge": { "main": [[{ "node": "Format Rank Response", "type": "main", "index": 0 }]] },
+    "Format Rank Response": { "main": [[{ "node": "Respond to Webhook", "type": "main", "index": 0 }]] }
+  },
+  "settings": { "executionOrder": "v1" }
+}

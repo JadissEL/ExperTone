@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Build
+.next/
+out/
+*.tsbuildinfo
+
+# Environment (contains secrets)
+.env
+.env.local
+.env.*.local
+ENV_KEYS_REFERENCE.md
+
+# Prisma
+.prisma/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+*.egg-info/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo

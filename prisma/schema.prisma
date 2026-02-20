@@ -1,0 +1,371 @@
+// Expert Intelligence Platform - Database Schema
+// Neon PostgreSQL + pgvector
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// =============================================================================
+// Enums
+// =============================================================================
+
+enum UserRole {
+  CSA
+  TEAM_LEAD
+  ADMIN
+  SUPER_ADMIN
+}
+
+enum ContactType {
+  EMAIL
+  PHONE
+}
+
+enum VisibilityStatus {
+  PRIVATE
+  GLOBAL_POOL
+}
+
+enum ProjectStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+}
+
+enum ClassificationTier {
+  S
+  A
+  B
+  C
+}
+
+enum TicketStatus {
+  OPEN
+  APPROVED
+  REJECTED
+  RESOLVED
+}
+
+// Multi-Agent System (Step 11): Blackboard pattern
+enum AgentStatus {
+  IDLE
+  RUNNING
+  DONE
+  ERROR
+}
+
+// =============================================================================
+// Models
+// =============================================================================
+
+model User {
+  id           String   @id @default(cuid())
+  clerkUserId  String?  @unique @map("clerk_user_id")
+  email        String   @unique
+  role         UserRole
+  teamId       String?  @map("team_id")
+  createdAt    DateTime @default(now()) @map("created_at")
+
+  // Relations
+  ownedExperts      Expert[]         @relation("ExpertOwner")
+  researchProjects  ResearchProject[] @relation("ProjectCreator")
+  requestedTickets  Ticket[]         @relation("TicketRequester")
+  ownedTickets      Ticket[]         @relation("TicketOwner")
+
+  @@map("users")
+}
+
+// Core: Experts Table (Single Source of Truth)
+// embedding_vector lives in ExpertVector (1:1) for pgvector semantic search
+model Expert {
+  id                   String           @id @default(cuid())
+  name                 String
+  industry             String
+  subIndustry          String           @map("sub_industry")
+  industryTags         Json?            @map("industry_tags")        // jsonb: ["tag1","tag2"] for 15-criteria
+  languages            Json?            @map("languages")            // jsonb: ["en","fr"]
+  country              String
+  region               String
+  seniorityScore       Int              @map("seniority_score")
+  yearsExperience      Int              @map("years_experience")
+  predictedRate        Float            @map("predicted_rate")       // ML-guessed price
+  predictedRateRange   Json?            @map("predicted_rate_range")
+  reputationScore      Float?           @map("reputation_score")     // weighted index
+  ownerId              String           @map("owner_id")             // owner_user_id -> User
+  visibilityStatus     VisibilityStatus @default(PRIVATE) @map("visibility_status")
+  privateExpiresAt     DateTime?        @map("private_expires_at")
+  lastContactUpdate    DateTime?       @map("last_contact_update")  // clock for 30-day expiry
+  pastEmployers        Json?            @map("past_employers")
+  skills               Json?            @map("skills")
+  totalEngagements     Int              @default(0) @map("total_engagements")
+  averageActualRate    Float?           @map("average_actual_rate")  // avg_actual_rate
+  subjectFrequencyMap  Json?            @map("subject_frequency_map")
+  reliabilityIndex     Float?           @map("reliability_index")
+  reacquisitionPriority Boolean        @default(false) @map("reacquisition_priority") // High priority when moved by Enforcer
+  linkedinUrl          String?        @map("linkedin_url")   // for check-exists (n8n ENRICH vs CREATE)
+  emailHash            String?        @map("email_hash")    // for check-exists
+  // Apex Hunter: multi-source scent trails (A=Social, B=IP, C=Market, D=Internal)
+  expertFootprint      Json?          @map("expert_footprint")  // { trailA, trailB, trailC, trailD } boolean
+  yearsBySource        Json?          @map("years_by_source")  // { linkedin?, patent?, internal? } for liar detector
+  seniorityFlag       String?         @map("seniority_flag")   // OK | DISCREPANCY
+  // Sentinel & Concierge: compliance, trust, retention
+  currentEmployer           String?   @map("current_employer")   // for blacklist cross-check
+  complianceScore           Int?      @map("compliance_score")   // 1-100, admin/client only
+  mnpiRiskLevel             String?  @map("mnpi_risk_level")    // HIGH_RISK_MNPI etc.
+  verifiedBadgeProvider     String?  @map("verified_badge_provider") // e.g. Persona, CLEAR
+  verifiedAt                DateTime? @map("verified_at")
+  citationCount             Int?     @map("citation_count")     // Scholar-verified
+  patentCount               Int?     @map("patent_count")
+  professionalAuthorityIndex Float?  @map("professional_authority_index") // immutable, Scholar-verified
+  contactCloaked            Boolean  @default(false) @map("contact_cloaked") // reveal only on accepted engagement
+  createdAt            DateTime         @default(now()) @map("created_at")
+  updatedAt            DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  owner           User              @relation("ExpertOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  vector          ExpertVector?     // embedding_vector (1536) in related table
+  contacts        ExpertContact[]   // Privacy First: 1-to-many, field-level encryption
+  researchResults ResearchResult[]
+  tickets         Ticket[]
+  engagements     Engagement[]
+  contactAttempts ContactAttempt[]  // no-spam: count per week
+
+  @@index([industry])
+  @@index([ownerId])
+  @@index([visibilityStatus])
+  @@index([lastContactUpdate])
+  @@index([linkedinUrl])
+  @@index([emailHash])
+  @@map("experts")
+}
+
+// Semantic search: pgvector embedding (1536) — expertise similarity to client brief
+model ExpertVector {
+  id        String   @id @default(cuid())
+  expertId  String   @unique @map("expert_id")
+  embedding Unsupported("vector(1536)")
+
+  // Relations
+  expert Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@map("expert_vectors")
+}
+
+// Privacy First: contact data separate for field-level encryption
+model ExpertContact {
+  id         String    @id @default(cuid())
+  expertId   String    @map("expert_id")
+  type       ContactType
+  value      String
+  isVerified Boolean   @default(false) @map("is_verified")
+  source     String?
+  verifiedAt DateTime? @map("verified_at")
+  verifiedBy String?   @map("verified_by")
+
+  // Relations
+  expert Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@map("expert_contacts")
+}
+
+model ResearchProject {
+  id                  String        @id @default(cuid())
+  creatorId            String        @map("creator_id")
+  title               String
+  status              ProjectStatus @default(PENDING)
+  filterCriteria      Json?         @map("filter_criteria")
+  deadline            DateTime?
+  progress            Int?          // 0-100 from n8n heartbeat
+  currentAction       String?       @map("current_action") // e.g. "Scraping LinkedIn"
+  lastHeartbeatAt     DateTime?     @map("last_heartbeat_at")
+  clientBlacklist     Json?         @map("client_blacklist")     // employer names to flag
+  restrictedIndustries Json?       @map("restricted_industries") // industries to penalize
+
+  // Relations
+  creator       User             @relation("ProjectCreator", fields: [creatorId], references: [id], onDelete: Cascade)
+  results       ResearchResult[]
+  engagements   Engagement[]
+  agentTasks    AgentTaskState[]  // Blackboard: one row per expert candidate pipeline
+
+  @@map("research_projects")
+}
+
+// No-Spam: contact attempts per expert (auditor lowers visibility if >3/week without booking)
+model ContactAttempt {
+  id        String   @id @default(cuid())
+  expertId  String   @map("expert_id")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  expert Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@index([expertId])
+  @@index([createdAt])
+  @@map("contact_attempts")
+}
+
+// Blackboard: shared state for Coordinator-Worker MAS (Hunter -> Scholar -> Valuer -> Auditor)
+model AgentTaskState {
+  id                String      @id @default(cuid())
+  projectId         String      @map("project_id")
+  candidateLabel    String?     @map("candidate_label")   // e.g. "Expert 1", "LinkedIn: john-doe"
+  expertId          String?     @map("expert_id")          // set when pipeline attaches to existing expert
+
+  hunterRaw         Json?       @map("hunter_raw")         // Hunter writes raw scraped text
+  scholarStructured Json?       @map("scholar_structured") // Scholar writes: seniority, domain, yearsExperience
+  valuerPricing     Json?       @map("valuer_pricing")     // Valuer writes: rateRange, confidence
+  auditorResult     Json?       @map("auditor_result")     // Auditor writes: verified, confidence, pendingAudit
+
+  hunterStatus      AgentStatus @default(IDLE) @map("hunter_status")
+  hunterMessage     String?     @map("hunter_message")
+  scholarStatus     AgentStatus @default(IDLE) @map("scholar_status")
+  scholarMessage    String?     @map("scholar_message")
+  valuerStatus      AgentStatus @default(IDLE) @map("valuer_status")
+  valuerMessage     String?     @map("valuer_message")
+  auditorStatus     AgentStatus @default(IDLE) @map("auditor_status")
+  auditorMessage    String?     @map("auditor_message")
+
+  eliteProfile      Json?       @map("elite_profile")     // Coordinator aggregate: Hunter + Scholar + Valuer + Auditor
+
+  createdAt         DateTime    @default(now()) @map("created_at")
+  updatedAt         DateTime    @updatedAt @map("updated_at")
+
+  project           ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@index([expertId])
+  @@map("agent_task_state")
+}
+
+model Engagement {
+  id                   String   @id @default(cuid())
+  expertId             String   @map("expert_id")
+  projectId            String   @map("project_id")
+  subjectMatter        String   @map("subject_matter")
+  actualCost           Float    @map("actual_cost")
+  actualCostEncrypted  String?  @map("actual_cost_encrypted") // Step 10 PII
+  clientFeedbackScore  Int      @map("client_feedback_score") // 1-5
+  date                 DateTime @map("date")
+  durationMinutes     Int      @map("duration_minutes")
+
+  // Relations
+  expert   Expert          @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  project  ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([expertId])
+  @@index([projectId])
+  @@index([subjectMatter])
+  @@map("engagements")
+}
+
+model ResearchResult {
+  id                 String             @id @default(cuid())
+  projectId          String             @map("project_id")
+  expertId           String             @map("expert_id")
+  matchScore         Float              @map("match_score")
+  classificationTier ClassificationTier @map("classification_tier")
+
+  // Relations
+  project ResearchProject @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  expert  Expert          @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, expertId])
+  @@map("research_results")
+}
+
+model Ticket {
+  id          String       @id @default(cuid())
+  requesterId String       @map("requester_id")
+  expertId    String       @map("expert_id")
+  ownerId     String       @map("owner_id")
+  status      TicketStatus @default(OPEN)
+  createdAt   DateTime     @default(now()) @map("created_at")
+
+  // Relations
+  requester User   @relation("TicketRequester", fields: [requesterId], references: [id], onDelete: Cascade)
+  expert   Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+  owner    User   @relation("TicketOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+
+  @@map("tickets")
+}
+
+// Governance: SystemAuditTable — actor_id, target_id, action_type, timestamp
+enum AuditAction {
+  OWNERSHIP_CHANGE
+  TICKET_OPENED
+  TICKET_RESOLVED
+  DATA_EXPORT
+  PROFILE_EDIT
+  FORCE_EXPIRE
+  BULK_RECLAIM
+  AUTO_EXPIRY
+  DISPUTE_RESOLVED
+}
+
+model AuditLog {
+  id        String      @id @default(cuid())
+  actorId   String?     @map("actor_id")
+  targetId  String?     @map("target_id")
+  action    AuditAction // action_type
+  metadata  Json?
+  createdAt DateTime    @default(now()) @map("created_at") // timestamp
+
+  @@index([actorId])
+  @@index([targetId])
+  @@index([action])
+  @@index([createdAt])
+  @@map("audit_logs")
+}
+
+model SystemConfig {
+  key   String   @id
+  value Json
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@map("system_config")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String   @map("user_id")
+  type      String   @map("type")
+  title     String
+  body      String?
+  readAt    DateTime? @map("read_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// n8n Bi-Directional Loop: idempotency for webhook retries
+model ProcessedRequest {
+  id        String   @id // request_id from n8n
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("processed_requests")
+}
+
+// Human-in-the-loop: n8n waits for CSA to Confirm or Discard when ML score 50-70%
+model PendingIntervention {
+  id            String   @id @default(cuid())
+  projectId     String   @map("project_id")
+  requestId     String   @map("request_id")   // idempotency
+  expertPayload Json     @map("expert_payload") // name, linkedin_url, etc.
+  score         Float    @map("score")        // 50-70
+  n8nResumeUrl  String   @map("n8n_resume_url") // Wait for Webhook resume URL
+  status        String   @default("PENDING")  // PENDING | CONFIRMED | DISCARDED
+  createdAt     DateTime @default(now()) @map("created_at")
+  resolvedAt    DateTime? @map("resolved_at")
+
+  @@unique([requestId])
+  @@index([projectId])
+  @@index([status])
+  @@map("pending_interventions")
+}
