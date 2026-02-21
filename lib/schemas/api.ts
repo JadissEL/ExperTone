@@ -3,7 +3,7 @@
  * All request bodies and query params must be validated before use.
  */
 import { z } from 'zod';
-import { commonSchemas } from '@/lib/api-validate';
+import { commonSchemas } from '@/lib/schemas/common';
 
 // --- Search ---
 export const searchBodySchema = z.object({

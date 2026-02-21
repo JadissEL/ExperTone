@@ -1,0 +1,19 @@
+# Render Blueprint for ExperTone ML Service
+# Deploy: + New → Blueprint, connect repo, then Apply
+
+services:
+  - type: web
+    name: expertone-ml
+    runtime: docker
+    plan: free
+
+    dockerfilePath: ./ml-service/Dockerfile
+    dockerContext: ./ml-service
+
+    envVars:
+      - key: DATABASE_URL
+        sync: false  # Neon pooled connection
+      - key: XAI_API_KEY
+        sync: false  # Or OPENAI_API_KEY
+      - key: OPENAI_API_KEY
+        sync: false  # Optional

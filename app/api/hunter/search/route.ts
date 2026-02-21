@@ -207,8 +207,18 @@ export async function POST(req: NextRequest) {
     });
   } catch (err) {
     logger.error({ err }, 'Hunter search error');
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    // Surface common config issues for easier debugging
+    const hint =
+      msg.includes('API key') || msg.includes('api_key') || msg.includes('Invalid')
+        ? 'Check XAI_API_KEY or OPENAI_API_KEY in Vercel env.'
+        : msg.includes('expert_vectors') || msg.includes('relation')
+          ? 'expert_vectors table may be missing. Run migrations and seed embeddings.'
+          : msg.includes('connect') || msg.includes('ECONNREFUSED')
+            ? 'Database connection failed. Check DATABASE_URL.'
+            : null;
     return NextResponse.json(
-      { error: 'Search failed', details: err instanceof Error ? err.message : 'Unknown' },
+      { error: 'Search failed', details: msg, hint },
       { status: 500 }
     );
   }

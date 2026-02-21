@@ -10,6 +10,11 @@ const N8N_BASE = process.env.N8N_BASE_URL?.replace(/\/$/, '') || 'http://localho
 export const EXPERT_HUNTER_WEBHOOK_URL =
   process.env.N8N_WEBHOOK_URL || `${N8N_BASE}/webhook/hunt`;
 
+/** True when n8n URL points to localhost or placeholder (unreachable from Vercel) */
+export const isN8nLocalhost =
+  /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?/i.test(EXPERT_HUNTER_WEBHOOK_URL) ||
+  EXPERT_HUNTER_WEBHOOK_URL.includes('REPLACE_WITH');
+
 export interface HuntPayload {
   projectId?: string;
   projectTitle?: string;

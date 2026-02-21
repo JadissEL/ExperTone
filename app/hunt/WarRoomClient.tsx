@@ -73,18 +73,27 @@ export function WarRoomClient() {
   const [addedIds, setAddedIds] = useState<Set<string>>(new Set());
   const [projects, setProjects] = useState<Array<{ id: string; title: string }>>([]);
   const [selectedProjectId, setSelectedProjectId] = useState<string>('');
+  const [searchError, setSearchError] = useState<string | null>(null);
   const pageSize = 50;
 
   const runSearch = useCallback(() => {
     if (!query.trim()) return;
     setLoading(true);
+    setSearchError(null);
     fetch('/api/hunter/search', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
       body: JSON.stringify({ query: query.trim(), page: 1, pageSize, nameFilter: nameFilter.trim() || undefined }),
     })
-      .then((r) => r.json())
+      .then(async (r) => {
+        const d = await r.json();
+        if (!r.ok) {
+          const msg = [d.details, d.error, d.hint].filter(Boolean).join(' — ') || `Search failed (${r.status})`;
+          throw new Error(msg);
+        }
+        return d;
+      })
       .then((d) => {
         if (d.results) {
           setResults(d.results);
@@ -93,7 +102,10 @@ export function WarRoomClient() {
           setPage(1);
         }
       })
-      .catch(() => setResults([]))
+      .catch((err) => {
+        setResults([]);
+        setSearchError(err instanceof Error ? err.message : 'Failed to fetch results');
+      })
       .finally(() => setLoading(false));
   }, [query, nameFilter]);
 
@@ -101,13 +113,21 @@ export function WarRoomClient() {
     (p: number) => {
       if (!query.trim()) return;
       setLoading(true);
+      setSearchError(null);
       fetch('/api/hunter/search', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
         body: JSON.stringify({ query: query.trim(), page: p, pageSize, nameFilter: nameFilter.trim() || undefined }),
       })
-        .then((r) => r.json())
+        .then(async (r) => {
+          const d = await r.json();
+          if (!r.ok) {
+            const msg = [d.details, d.error, d.hint].filter(Boolean).join(' — ') || `Search failed (${r.status})`;
+            throw new Error(msg);
+          }
+          return d;
+        })
         .then((d) => {
           if (d.results) {
             setResults(d.results);
@@ -116,6 +136,7 @@ export function WarRoomClient() {
             setPage(p);
           }
         })
+        .catch((err) => setSearchError(err instanceof Error ? err.message : 'Failed to fetch'))
         .finally(() => setLoading(false));
     },
     [query, nameFilter]
@@ -141,7 +162,10 @@ export function WarRoomClient() {
       credentials: 'include',
       body: JSON.stringify({ query: query.trim(), projectId: selectedProjectId || undefined, projectTitle: query.slice(0, 80) }),
     })
-      .then((r) => r.json().then((d) => ({ ok: r.ok, ...d })))
+      .then(async (r) => {
+        const d = await r.json().catch(() => ({}));
+        return { ok: r.ok, ...d };
+      })
       .then((d) => {
         if (d.ok) {
           setTriggerMessage({ type: 'success', text: d.message ?? 'Hunter triggered. n8n agents running.' });
@@ -151,8 +175,8 @@ export function WarRoomClient() {
         }
         setTimeout(() => setTriggerMessage(null), 5000);
       })
-      .catch(() => {
-        setTriggerMessage({ type: 'error', text: 'Request failed' });
+      .catch((err) => {
+        setTriggerMessage({ type: 'error', text: err instanceof Error ? err.message : 'Request failed' });
         setTimeout(() => setTriggerMessage(null), 5000);
       })
       .finally(() => setTriggerLoading(false));
@@ -234,6 +258,15 @@ export function WarRoomClient() {
         </div>
       )}
 
+      {searchError && (
+        <div className="px-3 py-2 text-xs shrink-0 bg-red-900/50 text-red-300 border-b border-red-700/50 flex items-center justify-between gap-2">
+          <span>{searchError}</span>
+          <button type="button" onClick={() => setSearchError(null)} className="text-red-400 hover:text-red-200">
+            Dismiss
+          </button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto min-h-0">
         <table className="w-full border-collapse text-xs">
           <thead className="sticky top-0 bg-slate-900 border-b border-slate-700 z-10">
@@ -252,7 +285,11 @@ export function WarRoomClient() {
             {results.length === 0 && !loading && (
               <tr>
                 <td colSpan={8} className="py-8 text-center text-slate-500">
-                  Enter a client brief and click Search or Hunter Trigger.
+                  {searchError ? (
+                    <span className="text-red-400">{searchError}</span>
+                  ) : (
+                    'Enter a client brief and click Search or Hunter Trigger.'
+                  )}
                 </td>
               </tr>
             )}

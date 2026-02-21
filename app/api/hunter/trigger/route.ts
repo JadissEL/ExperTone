@@ -5,7 +5,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { triggerExpertHunt } from '@/app/lib/n8n-bridge';
+import { triggerExpertHunt, isN8nLocalhost } from '@/app/lib/n8n-bridge';
 import { parseBody } from '@/lib/api-validate';
 import { hunterTriggerProactiveBodySchema } from '@/lib/schemas/api';
 
@@ -26,6 +26,16 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return parsed.response;
   const { projectId, projectTitle, filterCriteria, query } = parsed.data;
   const projectIdStr = typeof projectId === 'string' && projectId.length > 0 ? projectId : undefined;
+
+  if (process.env.VERCEL && isN8nLocalhost) {
+    return NextResponse.json(
+      {
+        error: 'n8n not configured for production',
+        hint: 'Set N8N_WEBHOOK_URL in Vercel env to your n8n webhook URL (e.g. https://your-tenant.app.n8n.cloud/webhook/hunt). See CONNECTIONS_SETUP.md.',
+      },
+      { status: 503 }
+    );
+  }
 
   const payload = {
     projectId: projectIdStr,

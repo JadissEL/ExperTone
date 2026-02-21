@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
 
 const ML_SERVICE_URL = process.env.ML_SERVICE_URL || 'http://localhost:8000';
+const isLocalhost = /^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?\/?$/i.test(ML_SERVICE_URL);
 
 export async function POST(req: NextRequest) {
   const { userId } = await auth();
@@ -23,6 +24,16 @@ export async function POST(req: NextRequest) {
   if (!parsed.success) return parsed.response;
   const { limit } = parsed.data;
 
+  if (isLocalhost && process.env.VERCEL) {
+    return NextResponse.json(
+      {
+        error: 'ML service not configured for production',
+        hint: 'Deploy the ml-service (e.g. Railway, Render) and set ML_SERVICE_URL in Vercel env.',
+      },
+      { status: 503 }
+    );
+  }
+
   try {
     const res = await fetch(`${ML_SERVICE_URL}/graph/visualize`, {
       method: 'POST',
@@ -42,10 +53,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(data);
   } catch (err) {
     console.error('ML graph visualize error:', err);
+    const msg = err instanceof Error ? err.message : 'Unknown error';
+    const hint =
+      msg.includes('ECONNREFUSED') || msg.includes('127.0.0.1')
+        ? 'Deploy ml-service and set ML_SERVICE_URL in Vercel env.'
+        : null;
     return NextResponse.json(
       {
         error: 'Failed to reach ML service',
-        details: err instanceof Error ? err.message : 'Unknown error',
+        details: msg,
+        ...(hint && { hint }),
       },
       { status: 502 }
     );

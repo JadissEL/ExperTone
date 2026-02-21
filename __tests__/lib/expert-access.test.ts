@@ -1,3 +1,6 @@
+jest.mock('@clerk/nextjs/server', () => ({ auth: jest.fn().mockResolvedValue({ userId: null }) }));
+jest.mock('@/lib/prisma', () => ({ prisma: {} }));
+
 import { canViewComplianceScore, maskContactValue } from '@/lib/expert-access';
 
 describe('canViewComplianceScore', () => {

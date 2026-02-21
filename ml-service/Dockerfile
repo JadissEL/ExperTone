@@ -19,6 +19,8 @@ COPY . .
 RUN mkdir -p /app/models
 
 ENV PYTHONUNBUFFERED=1
+ENV PORT=8000
 EXPOSE 8000
 
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Render injects PORT at runtime; default 8000 for local Docker
+CMD uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
