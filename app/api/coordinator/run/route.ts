@@ -5,6 +5,9 @@ import { runCoordinatorPipeline } from '@/lib/coordinator';
 import { parseBody } from '@/lib/api-validate';
 import { coordinatorRunBodySchema } from '@/lib/schemas/api';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+
 /**
  * POST: Start the Coordinator pipeline for a project.
  * Body: { projectId: string, brief: string }
