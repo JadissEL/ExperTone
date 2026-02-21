@@ -11,6 +11,7 @@ out/
 .env.local
 .env.*.local
 ENV_KEYS_REFERENCE.md
+ENV_KEYS_REFERENCE.html
 
 # Prisma
 .prisma/
@@ -28,3 +29,5 @@ __pycache__/
 .vscode/
 *.swp
 *.swo
+.vercel
+.env*.local

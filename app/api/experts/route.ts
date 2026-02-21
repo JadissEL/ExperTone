@@ -15,6 +15,10 @@ export interface ExpertRow {
   name: string;
   industry: string;
   subIndustry: string;
+  country?: string;
+  region?: string;
+  seniorityScore?: number;
+  yearsExperience?: number;
   matchScore?: number;
   predictedRate: number;
   source: 'agent' | 'internal';
@@ -25,6 +29,9 @@ export interface ExpertRow {
   hasProvenMastery?: boolean;
   reacquisitionPriority?: boolean;
   rankScore?: number;
+  totalEngagements?: number;
+  mnpiRiskLevel?: string | null;
+  lastContactUpdate?: string | null;
 }
 
 export async function GET(req: NextRequest) {
@@ -54,6 +61,7 @@ export async function GET(req: NextRequest) {
     reputationScore?: number | null;
     averageActualRate?: number | null;
     lastContactUpdate?: Date | null;
+    totalEngagements?: number;
     subjectFrequencyMap?: unknown;
     industryTags?: unknown;
     reacquisitionPriority?: boolean;
@@ -109,6 +117,7 @@ export async function GET(req: NextRequest) {
       professionalAuthorityIndex: r.expert.professionalAuthorityIndex ?? null,
       complianceScore: showCompliance ? r.expert.complianceScore : null,
       mnpiRiskLevel: showCompliance ? r.expert.mnpiRiskLevel : null,
+      totalEngagements: r.expert.totalEngagements,
     }));
   } else {
     const showCompliance = canViewComplianceScore({
@@ -125,11 +134,16 @@ export async function GET(req: NextRequest) {
       name: e.name,
       industry: e.industry,
       subIndustry: e.subIndustry,
+      country: e.country,
+      region: e.region,
+      seniorityScore: e.seniorityScore,
+      yearsExperience: e.yearsExperience,
       predictedRate: e.predictedRate,
       visibilityStatus: e.visibilityStatus,
       reputationScore: e.reputationScore,
       averageActualRate: e.averageActualRate,
       lastContactUpdate: e.lastContactUpdate,
+      totalEngagements: e.totalEngagements,
       subjectFrequencyMap: e.subjectFrequencyMap,
       industryTags: e.industryTags,
       reacquisitionPriority: e.reacquisitionPriority ?? false,
@@ -194,6 +208,8 @@ export async function GET(req: NextRequest) {
       professionalAuthorityIndex: e.professionalAuthorityIndex ?? null,
       complianceScore: e.complianceScore ?? null,
       mnpiRiskLevel: e.mnpiRiskLevel ?? null,
+      totalEngagements: e.totalEngagements ?? 0,
+      lastContactUpdate: e.lastContactUpdate?.toISOString() ?? null,
     };
   });
 

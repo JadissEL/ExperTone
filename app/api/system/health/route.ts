@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 
+export const dynamic = 'force-dynamic';
+
 const ML_BASE = process.env.ML_SERVICE_URL || 'http://localhost:8000';
 
 export interface SystemHealthCheck {
