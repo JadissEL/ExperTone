@@ -1,7 +1,7 @@
 /**
  * Seed experts with embeddings for Hunter Search.
  * Run: npx tsx scripts/seed-with-embeddings.ts
- * Requires: XAI_API_KEY or OPENAI_API_KEY, DATABASE_URL
+ * Requires: OPENROUTER_API_KEY (or OPENAI/XAI), DATABASE_URL
  */
 
 import 'dotenv/config';

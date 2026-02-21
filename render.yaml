@@ -13,7 +13,11 @@ services:
     envVars:
       - key: DATABASE_URL
         sync: false  # Neon pooled connection
+      - key: EMBEDDING_PROVIDER
+        value: openrouter
+      - key: OPENROUTER_API_KEY
+        sync: false  # From openrouter.ai
       - key: XAI_API_KEY
-        sync: false  # Or OPENAI_API_KEY
+        sync: false  # When EMBEDDING_PROVIDER=xai
       - key: OPENAI_API_KEY
-        sync: false  # Optional
+        sync: false  # When EMBEDDING_PROVIDER=openai

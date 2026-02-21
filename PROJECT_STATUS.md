@@ -30,7 +30,8 @@
 ```bash
 npm run db:seed-embeddings
 ```
-Requires: `XAI_API_KEY` or `OPENAI_API_KEY`, `DATABASE_URL` in `.env`
+Requires: Valid `XAI_API_KEY` (from [console.x.ai](https://console.x.ai)) or `OPENAI_API_KEY`, `DATABASE_URL` in `.env`.  
+If you get "Incorrect API key", regenerate the key at console.x.ai and update `.env`.
 
 ### 2. n8n Hunter Trigger (optional)
 - Set `N8N_WEBHOOK_URL` in Vercel to your n8n webhook (e.g. `https://your-tenant.app.n8n.cloud/webhook/hunt`)

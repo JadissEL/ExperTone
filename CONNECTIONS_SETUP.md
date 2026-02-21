@@ -34,7 +34,9 @@ This guide ensures Vercel, n8n, and Neon are correctly wired for the ExperTone p
 | `DIRECT_URL` | ✅ | Neon direct connection (for migrations) |
 | `NEXT_PUBLIC_APP_URL` | ✅ | Your Vercel app URL, e.g. `https://exper-tone.vercel.app` |
 | `SHARED_SECRET` | ✅ | HMAC secret; must match n8n (for webhook verification) |
-| `XAI_API_KEY` | ✅ | For embeddings (Hunter Search) |
+| `EMBEDDING_PROVIDER` | ✅ | `openrouter` \| `openai` \| `xai` |
+| `OPENROUTER_API_KEY` | ✅ (when openrouter) | From [openrouter.ai](https://openrouter.ai) |
+| `XAI_API_KEY` | (when xai) | For embeddings (Hunter Search) |
 
 ### Get n8n Webhook URL
 
@@ -83,3 +85,18 @@ If you have Vercel, n8n, and Neon MCP servers connected in Cursor:
 - [ ] Expert Hunter workflow is **Active** in n8n
 - [ ] `DATABASE_URL` in Vercel is from Neon Console
 - [ ] Redeploy Vercel after changing env vars
+
+---
+
+## 6. Render ML Service (ExperTone)
+
+**Location:** [Render Dashboard](https://dashboard.render.com) → ExperTone → Environment
+
+Add these for OpenRouter embeddings (rank, semantic search):
+
+| Variable | Value |
+|----------|-------|
+| `EMBEDDING_PROVIDER` | `openrouter` |
+| `OPENROUTER_API_KEY` | Your OpenRouter API key |
+
+Keep existing `DATABASE_URL` (Neon pooled). Redeploy after adding.

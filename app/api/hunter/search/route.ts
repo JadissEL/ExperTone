@@ -211,7 +211,7 @@ export async function POST(req: NextRequest) {
     // Surface common config issues for easier debugging
     const hint =
       msg.includes('API key') || msg.includes('api_key') || msg.includes('Invalid')
-        ? 'Check XAI_API_KEY or OPENAI_API_KEY in Vercel env.'
+        ? 'Check OPENROUTER_API_KEY, OPENAI_API_KEY, or XAI_API_KEY in Vercel env.'
         : msg.includes('expert_vectors') || msg.includes('relation')
           ? 'expert_vectors table may be missing. Run migrations and seed embeddings.'
           : msg.includes('connect') || msg.includes('ECONNREFUSED')

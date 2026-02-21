@@ -1,16 +1,28 @@
 import OpenAI from 'openai';
 
 /**
- * Embedding provider: "openai" | "xai" (Grok)
- * xAI is OpenAI-compatible; use XAI_API_KEY and get free credits at console.x.ai
+ * Embedding provider: "openrouter" | "openai" | "xai" (Grok)
+ * OpenRouter: unified API, use OPENROUTER_API_KEY
+ * xAI: use XAI_API_KEY
+ * OpenAI: use OPENAI_API_KEY
  */
 function getClient(): OpenAI {
   const provider = (process.env.EMBEDDING_PROVIDER || 'xai').toLowerCase();
+  const useOpenRouter = provider === 'openrouter';
   const useXai = provider === 'xai' || provider === 'grok';
-  const apiKey = useXai ? process.env.XAI_API_KEY : process.env.OPENAI_API_KEY;
+  const apiKey = useOpenRouter
+    ? process.env.OPENROUTER_API_KEY
+    : useXai
+      ? process.env.XAI_API_KEY
+      : process.env.OPENAI_API_KEY;
+  const baseURL = useOpenRouter
+    ? 'https://openrouter.ai/api/v1'
+    : useXai
+      ? 'https://api.x.ai/v1'
+      : undefined;
   return new OpenAI({
     apiKey: apiKey ?? 'dummy-build-key',
-    baseURL: useXai ? 'https://api.x.ai/v1' : undefined,
+    baseURL,
   });
 }
 
@@ -20,12 +32,14 @@ function client(): OpenAI {
   return _client;
 }
 
-const EMBEDDING_MODEL = process.env.EMBEDDING_MODEL || 'text-embedding-3-small';
+const EMBEDDING_MODEL =
+  process.env.EMBEDDING_MODEL ||
+  (process.env.EMBEDDING_PROVIDER?.toLowerCase() === 'openrouter' ? 'openai/text-embedding-3-small' : 'text-embedding-3-small');
 const EMBEDDING_DIMENSIONS = 1536;
 
 /**
  * Generates a vector embedding for the given text.
- * Uses xAI (Grok) by default for free credits; set EMBEDDING_PROVIDER=openai for OpenAI.
+ * Uses OpenRouter by default; set EMBEDDING_PROVIDER=openrouter|openai|xai.
  * Output: 1536 dimensions for pgvector semantic search.
  */
 export async function generateEmbedding(text: string): Promise<number[]> {
@@ -43,7 +57,9 @@ export async function generateEmbedding(text: string): Promise<number[]> {
   return embedding;
 }
 
-const CHAT_MODEL = process.env.CHAT_MODEL || 'gpt-4o-mini';
+const _chatModel = process.env.CHAT_MODEL || 'gpt-4o-mini';
+const useOpenRouterForChat = process.env.EMBEDDING_PROVIDER?.toLowerCase() === 'openrouter';
+const CHAT_MODEL = useOpenRouterForChat && !_chatModel.includes('/') ? `openai/${_chatModel}` : _chatModel;
 
 /**
  * One-turn chat completion for MAS agents (Scholar, Valuer, Auditor).
