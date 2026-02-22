@@ -38,6 +38,7 @@ export async function GET(
     include: {
       contacts: true,
       engagements: { orderBy: { date: 'desc' }, take: 20 },
+      sources: { orderBy: { retrievedAt: 'desc' }, take: 10 },
     },
   });
 
@@ -96,6 +97,19 @@ export async function GET(
     durationMinutes: e.durationMinutes,
   })) ?? [];
 
+  const expertTyped = expert as typeof expert & {
+    expertFootprint?: unknown;
+    yearsBySource?: unknown;
+    seniorityFlag?: string | null;
+  };
+
+  const sources = expert.sources?.map((s) => ({
+    id: s.id,
+    sourceType: s.sourceType,
+    sourceUrl: s.sourceUrl,
+    retrievedAt: s.retrievedAt.toISOString(),
+  })) ?? [];
+
   return NextResponse.json({
     id: expert.id,
     name: expert.name,
@@ -116,6 +130,9 @@ export async function GET(
     averageActualRate: expert.averageActualRate ?? null,
     subjectFrequencyMap: (expert as { subjectFrequencyMap?: Record<string, number> }).subjectFrequencyMap ?? null,
     reliabilityIndex: expert.reliabilityIndex ?? null,
+    expertFootprint: expertTyped.expertFootprint ?? null,
+    yearsBySource: expertTyped.yearsBySource ?? null,
+    seniorityFlag: expertTyped.seniorityFlag ?? null,
     verifiedBadgeProvider: expertData.verifiedBadgeProvider ?? null,
     verifiedAt: expertData.verifiedAt?.toISOString() ?? null,
     citationCount: expertData.citationCount ?? 0,
@@ -131,6 +148,8 @@ export async function GET(
     contactCloaked: expertData.contactCloaked ?? false,
     contactRevealGranted: revealContacts,
     sourceVerified: expert.sourceVerified ?? null,
+    linkedinUrl: expert.linkedinUrl ?? null,
+    sources,
     engagements,
   });
 }

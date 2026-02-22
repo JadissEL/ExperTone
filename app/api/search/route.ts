@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     const similarityMap = new Map(results.map((r) => [r.expert_id, r.similarity]));
 
     const experts = await prisma.expert.findMany({
-      where: { id: { in: expertIds } },
+      where: { id: { in: expertIds }, linkedinUrl: { not: null } },
       include: {
         contacts: true,
         engagements: { where: { clientFeedbackScore: { lt: 3 } }, select: { subjectMatter: true } },

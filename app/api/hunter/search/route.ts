@@ -112,7 +112,10 @@ export async function POST(req: NextRequest) {
     }
 
     const experts = await prisma.expert.findMany({
-      where: { id: { in: expertIds } },
+      where: {
+        id: { in: expertIds },
+        linkedinUrl: { not: null },
+      },
       include: {
         engagements: { orderBy: { date: 'desc' }, take: 1, select: { date: true, subjectMatter: true } },
       },
@@ -209,6 +212,7 @@ export async function POST(req: NextRequest) {
         scentTrails: r.footprint ?? { trailA: false, trailB: false, trailC: false, trailD: true },
         seniorityFlag: r.seniorityFlag,
         sourceVerified: r.expert.sourceVerified ?? null,
+        linkedinUrl: r.expert.linkedinUrl ?? null,
       })),
       total,
       page: p,

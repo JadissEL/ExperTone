@@ -35,7 +35,7 @@ export const ticketBodySchema = z.object({
 export const hunterSearchBodySchema = z.object({
   query: z.string().min(1).max(8000).trim(),
   page: z.coerce.number().int().min(1).optional().default(1),
-  pageSize: z.coerce.number().int().min(1).max(100).optional().default(50),
+  pageSize: z.coerce.number().int().min(1).max(100).optional().default(100),
   nameFilter: z.string().max(200).trim().optional(),
 });
 
@@ -73,6 +73,9 @@ const inboundExpertSchema = z.object({
     .optional(),
   already_existing_flag: z.boolean().optional(),
   source_verified: z.boolean().optional(), // false = Minimal Callback (no scraped sources)
+  linkedin_url: z.preprocess((v) => (v === null || v === '' ? undefined : v), z.string().url().max(500).optional()),
+  career_history: z.array(z.string()).optional(), // for pastEmployers
+  skills: z.array(z.string()).optional(),
 });
 
 export const n8nCallbackBodySchema = z

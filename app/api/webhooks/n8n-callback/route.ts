@@ -129,6 +129,49 @@ export async function POST(req: NextRequest) {
           update: {},
         });
         results.push({ expertId: existing.id, alreadyExisting: true });
+
+        // Enrichment: persist source provenance and update expert when n8n sends new data
+        const linkedinUrl = typeof e.linkedin_url === 'string' && e.linkedin_url.trim() ? e.linkedin_url.trim() : null;
+        if (linkedinUrl) {
+          const existingSource = await prisma.expertSource.findFirst({
+            where: { expertId: existing.id, sourceType: 'linkedin' },
+          });
+          if (!existingSource) {
+            await prisma.expertSource.create({
+              data: { expertId: existing.id, sourceType: 'linkedin', sourceUrl: linkedinUrl },
+            });
+          }
+        }
+        const pastEmployers = Array.isArray(e.career_history) && e.career_history.length > 0
+          ? (e.career_history as string[]).slice(0, 20)
+          : undefined;
+        const skills = Array.isArray(e.skills) && e.skills.length > 0
+          ? (e.skills as string[]).slice(0, 30)
+          : undefined;
+        const current = await prisma.expert.findUnique({
+          where: { id: existing.id },
+          select: { pastEmployers: true, linkedinUrl: true, skills: true },
+        });
+        const hasHistory = Array.isArray(current?.pastEmployers) && (current.pastEmployers as unknown[]).length > 0;
+        const hasSkills = Array.isArray(current?.skills) && (current.skills as unknown[]).length > 0;
+        const needsUpdate =
+          (pastEmployers && !hasHistory) ||
+          (skills && !hasSkills) ||
+          (linkedinUrl && !current?.linkedinUrl) ||
+          (e.source_verified != null);
+        if (needsUpdate) {
+          const updateData: { pastEmployers?: string[]; skills?: string[]; sourceVerified?: boolean; linkedinUrl?: string } = {};
+          if (pastEmployers && !hasHistory) updateData.pastEmployers = pastEmployers;
+          if (skills && !hasSkills) updateData.skills = skills;
+          if (e.source_verified != null) updateData.sourceVerified = e.source_verified;
+          if (linkedinUrl && !current?.linkedinUrl) updateData.linkedinUrl = linkedinUrl;
+          if (Object.keys(updateData).length > 0) {
+            await prisma.expert.update({
+              where: { id: existing.id },
+              data: updateData,
+            });
+          }
+        }
       } catch (err) {
         logger.warn({ err, projectId, expertId: existing.id }, '[n8n-callback] ResearchResult upsert failed');
       }
@@ -136,6 +179,13 @@ export async function POST(req: NextRequest) {
     }
 
     const sourceVerified = e.source_verified ?? (e.contacts?.length ? true : null);
+    const linkedinUrl = typeof e.linkedin_url === 'string' && e.linkedin_url.trim() ? e.linkedin_url.trim() : null;
+    const pastEmployers = Array.isArray(e.career_history) && e.career_history.length > 0
+      ? (e.career_history as string[]).slice(0, 20)
+      : undefined;
+    const skills = Array.isArray(e.skills) && e.skills.length > 0
+      ? (e.skills as string[]).slice(0, 30)
+      : undefined;
     const newExpert = await prisma.expert.create({
       data: {
         name: e.name.trim(),
@@ -149,6 +199,9 @@ export async function POST(req: NextRequest) {
         ownerId: project.creatorId,
         visibilityStatus: 'PRIVATE',
         sourceVerified: sourceVerified ?? undefined,
+        linkedinUrl: linkedinUrl ?? undefined,
+        pastEmployers: pastEmployers ?? undefined,
+        skills: skills ?? undefined,
       },
     });
 
@@ -164,6 +217,12 @@ export async function POST(req: NextRequest) {
       if (contactData.length > 0) {
         await prisma.expertContact.createMany({ data: contactData });
       }
+    }
+
+    if (linkedinUrl) {
+      await prisma.expertSource.create({
+        data: { expertId: newExpert.id, sourceType: 'linkedin', sourceUrl: linkedinUrl },
+      });
     }
 
     await prisma.researchResult.create({

@@ -2,8 +2,9 @@
 
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Briefcase, MapPin, DollarSign, Star, Network, History, Award } from 'lucide-react';
+import { X, Briefcase, MapPin, DollarSign, Star, Network, History, Award, ExternalLink } from 'lucide-react';
 import { useDashboardStore, type ExpertDetail } from '@/stores/dashboardStore';
+import { formatWorkHistoryEntry } from '@/lib/expert-display';
 import { ExpertNetworkGraph } from './ExpertNetworkGraph';
 
 type TabId = 'profile' | 'network' | 'historical';
@@ -73,6 +74,8 @@ export function ExpertSidePanel() {
   const pastEmployers = (expert as ExpertDetail & { pastEmployers?: unknown })
     .pastEmployers;
   const skills = (expert as ExpertDetail & { skills?: unknown }).skills;
+  const sources = (expert as ExpertDetail & { sources?: Array<{ sourceType: string; sourceUrl: string | null }> }).sources;
+  const linkedinUrl = (expert as ExpertDetail & { linkedinUrl?: string | null }).linkedinUrl;
   const contacts = expert.contacts ?? [];
   const reputationScore = expert.reputationScore ?? null;
   const trustStars = reputationScore != null ? Math.round(reputationScore * 5) : null;
@@ -249,8 +252,8 @@ export function ExpertSidePanel() {
                     Past Employers
                   </h4>
                   <ul className="space-y-1 text-sm text-slate-300">
-                    {pastEmployers.slice(0, 5).map((e: string, i: number) => (
-                      <li key={i}>• {e}</li>
+                    {pastEmployers.slice(0, 5).map((e: unknown, i: number) => (
+                      <li key={i}>• {formatWorkHistoryEntry(e)}</li>
                     ))}
                   </ul>
                 </div>
@@ -286,6 +289,37 @@ export function ExpertSidePanel() {
                       </li>
                     ))}
                   </ul>
+                </div>
+              )}
+
+              {(sources?.length ?? 0) > 0 && (
+                <div>
+                  <h4 className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">
+                    Source References
+                  </h4>
+                  <div className="space-y-1 text-xs">
+                    {linkedinUrl && (
+                      <a
+                        href={linkedinUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-center gap-1 text-sky-400 hover:text-sky-300"
+                      >
+                        LinkedIn <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    {sources?.filter((s) => s.sourceUrl && s.sourceType !== 'linkedin').slice(0, 3).map((s, i) => (
+                      <a
+                        key={i}
+                        href={s.sourceUrl!}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="block truncate text-sky-400 hover:text-sky-300"
+                      >
+                        {s.sourceType}
+                      </a>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>

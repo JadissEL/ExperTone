@@ -2,7 +2,8 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X, Briefcase, MapPin, DollarSign, Star, History, BarChart2 } from 'lucide-react';
+import { X, Briefcase, MapPin, DollarSign, Star, History, BarChart2, ExternalLink } from 'lucide-react';
+import { formatWorkHistoryEntry } from '@/lib/expert-display';
 import { useVanguardStore } from '@/stores/vanguardStore';
 import { useReducedMotion, getTransition } from '@/lib/vanguard/reduced-motion';
 import { SPRING } from '@/lib/vanguard/motion';
@@ -137,6 +138,9 @@ export function InspectorPanel() {
   const predictedRate = Number(expert?.predictedRate ?? 0);
   const reputationScore = expert?.reputationScore as number | null | undefined;
   const trustStars = reputationScore != null ? Math.round(reputationScore * 5) : null;
+  const pastEmployers = ((expert as Record<string, unknown>)?.pastEmployers as unknown[]) ?? [];
+  const sources = ((expert as Record<string, unknown>)?.sources as Array<{ sourceType: string; sourceUrl: string | null }>) ?? [];
+  const linkedinUrl = (expert as Record<string, unknown>)?.linkedinUrl as string | null | undefined;
   const engagements = ((expert as Record<string, unknown>)?.engagements as Array<{
     id: string;
     subjectMatter?: string;
@@ -250,6 +254,35 @@ export function InspectorPanel() {
                   <span className="font-medium text-expert-emerald">${predictedRate}/hr</span>
                 </div>
               </div>
+
+              {activeTab === 'overview' && pastEmployers.length > 0 && (
+                <div className="rounded-lg bg-expert-navy/60 border border-expert-frost-border p-3">
+                  <p className="text-xs text-slate-500 mb-2">Work History</p>
+                  <ul className="space-y-1 text-sm text-slate-300">
+                    {pastEmployers.slice(0, 5).map((e: unknown, i: number) => (
+                      <li key={i}>• {formatWorkHistoryEntry(e)}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {activeTab === 'overview' && (sources.length > 0 || linkedinUrl) && (
+                <div className="rounded-lg bg-expert-navy/60 border border-expert-frost-border p-3">
+                  <p className="text-xs text-slate-500 mb-2">Sources</p>
+                  <div className="space-y-1 text-xs">
+                    {linkedinUrl && (
+                      <a href={linkedinUrl} target="_blank" rel="noopener noreferrer" className="flex items-center gap-1 text-expert-emerald hover:text-expert-emerald/80">
+                        LinkedIn <ExternalLink className="w-3 h-3" />
+                      </a>
+                    )}
+                    {sources.filter((s) => s.sourceUrl && s.sourceType !== 'linkedin').slice(0, 3).map((s, i) => (
+                      <a key={i} href={s.sourceUrl!} target="_blank" rel="noopener noreferrer" className="block truncate text-expert-emerald hover:text-expert-emerald/80">
+                        {s.sourceType}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {activeTab === 'history' && (
                 <div className="rounded-lg bg-expert-navy/60 border border-expert-frost-border overflow-hidden">

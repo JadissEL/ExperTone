@@ -17,6 +17,7 @@ const mockExpert = {
   isExisting: true,
   similarityScore: 0.9,
   pastEmployers: ['Acme Corp', 'TechCo'],
+  reputationScore: 0.85,
 };
 
 describe('ExpertProfileSheet', () => {

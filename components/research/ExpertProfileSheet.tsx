@@ -13,6 +13,7 @@ import { Button } from '@/components/ui/button';
 import { useResearchStore } from '@/stores/useResearchStore';
 import type { ResearchExpert } from '@/types/expert';
 import { cn } from '@/lib/utils';
+import { formatWorkHistoryEntry } from '@/lib/expert-display';
 
 export function ExpertProfileSheet() {
   const { uiState, setSelectedExpertId, results } = useResearchStore();
@@ -88,28 +89,45 @@ export function ExpertProfileSheet() {
               </div>
             </div>
 
-            {/* ML Score Breakdown placeholder */}
-            <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
-              <h4 className="text-sm font-medium text-slate-900">Score Breakdown</h4>
-              <p className="mt-2 text-xs text-slate-500">
-                Why the ML service gave this expert a high similarity to the brief.
-              </p>
-              <div className="mt-3 h-20 rounded border border-dashed border-slate-300 bg-white/50 flex items-center justify-center text-xs text-slate-400">
-                ML breakdown placeholder
+            {/* Reputation & Algorithm Signals */}
+            {((expert as ResearchExpert & { reputationScore?: number | null }).reputationScore != null ||
+              (expert as ResearchExpert & { subjectFrequencyMap?: Record<string, number> }).subjectFrequencyMap ||
+              (expert as ResearchExpert & { reliabilityIndex?: number | null }).reliabilityIndex != null) && (
+              <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                <h4 className="text-sm font-medium text-slate-900">Score Breakdown</h4>
+                <div className="mt-3 space-y-2 text-sm text-slate-700">
+                  {(expert as ResearchExpert & { reputationScore?: number | null }).reputationScore != null && (
+                    <p>Reputation: {((expert as ResearchExpert & { reputationScore?: number }).reputationScore ?? 0).toFixed(2)}</p>
+                  )}
+                  {(expert as ResearchExpert & { reliabilityIndex?: number | null }).reliabilityIndex != null && (
+                    <p>Reliability: {((expert as ResearchExpert & { reliabilityIndex?: number }).reliabilityIndex ?? 0).toFixed(2)}</p>
+                  )}
+                  {(expert as ResearchExpert & { subjectFrequencyMap?: Record<string, number> }).subjectFrequencyMap &&
+                    Object.keys((expert as ResearchExpert & { subjectFrequencyMap?: Record<string, number> }).subjectFrequencyMap ?? {}).length > 0 && (
+                      <div>
+                        <p className="text-slate-500 mb-1">Subject mastery:</p>
+                        <ul className="list-disc list-inside text-xs">
+                          {Object.entries((expert as ResearchExpert & { subjectFrequencyMap: Record<string, number> }).subjectFrequencyMap)
+                            .sort(([, a], [, b]) => b - a)
+                            .slice(0, 5)
+                            .map(([k, v]) => (
+                              <li key={k}>{k}: {v}</li>
+                            ))}
+                        </ul>
+                      </div>
+                    )}
+                </div>
               </div>
-            </div>
+            )}
 
-            {/* Past Work History placeholder */}
+            {/* Past Work History */}
             <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
               <h4 className="text-sm font-medium text-slate-900">Past Work History</h4>
-              <p className="mt-2 text-xs text-slate-500">
-                Chronological timeline from CV parsing.
-              </p>
               <div className="mt-3 space-y-2">
                 {Array.isArray(expert.pastEmployers) && expert.pastEmployers.length > 0 ? (
-                  expert.pastEmployers.slice(0, 5).map((e, i) => (
+                  expert.pastEmployers.slice(0, 8).map((e: unknown, i: number) => (
                     <div key={i} className="text-sm text-slate-700">
-                      • {e}
+                      • {formatWorkHistoryEntry(e)}
                     </div>
                   ))
                 ) : (
@@ -119,6 +137,25 @@ export function ExpertProfileSheet() {
                 )}
               </div>
             </div>
+
+            {/* Source References */}
+            {(expert as ResearchExpert & { sources?: Array<{ sourceType: string; sourceUrl: string | null }> }).sources &&
+              (expert as ResearchExpert & { sources: Array<{ sourceType: string; sourceUrl: string | null }> }).sources.length > 0 && (
+                <div className="rounded-lg border border-slate-200 bg-slate-50/50 p-4">
+                  <h4 className="text-sm font-medium text-slate-900">Source References</h4>
+                  <div className="mt-3 space-y-1 text-xs">
+                    {(expert as ResearchExpert & { sources: Array<{ sourceType: string; sourceUrl: string | null }> }).sources.map((s, i) => (
+                      <div key={i}>
+                        {s.sourceType}: {s.sourceUrl ? (
+                          <a href={s.sourceUrl} target="_blank" rel="noopener noreferrer" className="text-sky-600 hover:underline truncate block">
+                            {s.sourceUrl}
+                          </a>
+                        ) : '—'}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
             {/* 30-day countdown (if PRIVATE) */}
             {expert.visibilityStatus === 'PRIVATE' && (
