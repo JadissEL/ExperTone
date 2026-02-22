@@ -77,11 +77,19 @@ export function SearchFilterNexus() {
 
   useEffect(() => {
     setProjectsLoading(true);
-    fetch('/api/projects', { credentials: 'include' })
+    const ac = new AbortController();
+    fetch('/api/projects', { credentials: 'include', signal: ac.signal })
       .then((r) => r.json())
-      .then((d) => setProjects(d.projects ?? []))
-      .catch(() => setProjects([]))
-      .finally(() => setProjectsLoading(false));
+      .then((d) => {
+        if (!ac.signal.aborted) setProjects(d.projects ?? []);
+      })
+      .catch((err) => {
+        if (!ac.signal.aborted && err?.name !== 'AbortError') setProjects([]);
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setProjectsLoading(false);
+      });
+    return () => ac.abort();
   }, []);
 
   const debouncedSetQuery = useCallback(
@@ -251,15 +259,15 @@ export function SearchFilterNexus() {
             ))}
           </div>
         )}
-        <div className="flex-1 flex items-center gap-2 min-w-0">
-        <Search className="w-4 h-4 text-slate-500 shrink-0" />
-        <input
-          type="text"
-          placeholder="Search experts..."
-          value={localQuery}
-          onChange={(e) => debouncedSetQuery(e.target.value)}
-          className="flex-1 min-w-0 bg-transparent text-sm text-slate-200 placeholder-slate-500 focus:outline-none focus-visible:ring-2 focus-visible:ring-expert-emerald/50 focus-visible:ring-offset-2 focus-visible:ring-offset-transparent rounded px-1 -mx-1"
-        />
+        <div className="flex-1 flex items-center gap-3 min-w-0 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl px-4 py-2.5 shadow-[0_0_40px_-8px_rgba(99,102,241,0.2)]">
+          <Search className="w-5 h-5 text-slate-400 shrink-0" />
+          <input
+            type="text"
+            placeholder="Search experts..."
+            value={localQuery}
+            onChange={(e) => debouncedSetQuery(e.target.value)}
+            className="flex-1 min-w-0 bg-transparent text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
+          />
         </div>
       </div>
 

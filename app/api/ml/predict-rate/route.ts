@@ -27,6 +27,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ text }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {

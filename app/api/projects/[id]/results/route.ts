@@ -100,6 +100,7 @@ export async function GET(
       ownerName: expert.owner?.email ?? null,
       matchScore: r.matchScore,
       classificationTier: r.classificationTier,
+      sourceVerified: expert.sourceVerified ?? null,
       expert: {
         ...expert,
         contacts,

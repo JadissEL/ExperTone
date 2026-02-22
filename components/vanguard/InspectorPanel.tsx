@@ -94,11 +94,21 @@ export function InspectorPanel() {
     const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(`${NOTES_KEY}-${activeExpert.id}`) : null;
     setNotes(stored ?? '');
     setLoading(true);
-    fetch(`/api/experts/${activeExpert.id}`, { credentials: 'include' })
+    const ac = new AbortController();
+    fetch(`/api/experts/${activeExpert.id}`, { credentials: 'include', signal: ac.signal })
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setFullExpert(d ?? activeExpert))
-      .catch(() => setFullExpert(activeExpert as unknown as Record<string, unknown>))
-      .finally(() => setLoading(false));
+      .then((d) => {
+        if (!ac.signal.aborted) setFullExpert(d ?? activeExpert);
+      })
+      .catch((err) => {
+        if (!ac.signal.aborted && err?.name !== 'AbortError') {
+          setFullExpert(activeExpert as unknown as Record<string, unknown>);
+        }
+      })
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+    return () => ac.abort();
   }, [activeExpert?.id]);
 
   const saveNotes = useCallback((expertId: string, value: string) => {
@@ -147,7 +157,7 @@ export function InspectorPanel() {
         transition={getTransition(reducedMotion, SPRING.default)}
         className="absolute inset-y-0 right-0 w-full sm:w-[450px] max-w-[min(450px,100vw)] z-overlay flex flex-col pointer-events-auto"
       >
-        <div className="glass-float rounded-l-2xl border-l border-expert-frost-border h-full flex flex-col overflow-hidden ml-2 shadow-float">
+        <div className="relative glass-float rounded-l-3xl border-l border-white/10 h-full flex flex-col overflow-hidden ml-2 shadow-float before:content-[''] before:absolute before:inset-0 before:rounded-l-3xl before:bg-gradient-to-br before:from-violet-500/5 before:via-transparent before:to-indigo-500/5 before:pointer-events-none">
           <div className="flex items-center justify-between p-4 border-b border-expert-frost-border/50 shrink-0">
             <h3 className="text-lg font-semibold text-slate-200 tracking-tight">Expert Profile</h3>
             <motion.button

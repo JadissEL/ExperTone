@@ -85,7 +85,7 @@ export function NavSpine() {
       transition={getTransition(reducedMotion, SPRING.default)}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      className="shrink-0 h-full flex flex-col vanguard-blur border-r border-expert-frost-border bg-expert-navy/60 z-nav"
+      className="relative shrink-0 h-full flex flex-col vanguard-blur border-r border-white/10 bg-aether-base/80 z-nav before:content-[''] before:absolute before:inset-0 before:bg-gradient-to-b before:from-indigo-500/5 before:via-transparent before:to-violet-500/5 before:pointer-events-none"
     >
       <div className="flex items-center h-14 shrink-0 px-3 border-b border-expert-frost-border/50">
         <motion.div

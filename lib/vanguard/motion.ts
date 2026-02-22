@@ -22,12 +22,27 @@ export const SPRING = {
     damping: 25,
     mass: 1,
   },
+  /** Aether: Apex Hunter staggered intelligence reveal */
+  apex: {
+    type: 'spring' as const,
+    stiffness: 260,
+    damping: 20,
+    mass: 0.8,
+  },
 } as const;
 
 export const STAGGER = {
   gridDelay: 0.05,
+  apexDelay: 0.04,
   gridInitial: { opacity: 0, y: 6 },
   gridAnimate: { opacity: 1, y: 0 },
+} as const;
+
+/** Aether: Floating breath-like animation (Concierge Brief) */
+export const FLOAT = {
+  y: [0, -10, 0] as [number, number, number],
+  duration: 6,
+  ease: 'easeInOut' as const,
 } as const;
 
 export const MICRO = {

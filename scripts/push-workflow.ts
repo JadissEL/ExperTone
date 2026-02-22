@@ -14,7 +14,7 @@ const N8N_BASE_URL = process.env.N8N_BASE_URL || 'http://localhost:5678';
 const N8N_API_KEY = process.env.N8N_API_KEY;
 
 const WORKFLOW_NAME = 'Expert Hunter';
-const WORKFLOW_SOURCE = path.join(__dirname, '../workflows/expert_hunter_v1.json');
+const WORKFLOW_SOURCE = path.join(__dirname, '../workflows/expert_hunter_cloud_no_env.json');
 
 async function main() {
   if (!N8N_API_KEY || !N8N_API_KEY.trim()) {

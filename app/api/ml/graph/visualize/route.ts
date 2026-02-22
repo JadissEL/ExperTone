@@ -39,6 +39,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ limit }),
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!res.ok) {

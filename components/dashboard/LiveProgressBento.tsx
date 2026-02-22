@@ -32,19 +32,30 @@ export function LiveProgressBento({ projectId, projectStatus, pollWhenIdle }: Li
       return;
     }
 
+    const ac = new AbortController();
     const fetchHeartbeat = () => {
-      fetch(`/api/projects/${projectId}/heartbeat`, { credentials: 'include' })
+      if (ac.signal.aborted) return;
+      fetch(`/api/projects/${projectId}/heartbeat`, { credentials: 'include', signal: ac.signal })
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
-          if (d) setData(d);
-          setError(null);
+          if (!ac.signal.aborted && d) {
+            setData(d);
+            setError(null);
+          }
         })
-        .catch(() => setError('Unable to load progress'));
+        .catch((err) => {
+          if (!ac.signal.aborted && err?.name !== 'AbortError') {
+            setError('Unable to load progress');
+          }
+        });
     };
 
     fetchHeartbeat();
     const interval = setInterval(fetchHeartbeat, POLL_INTERVAL_MS);
-    return () => clearInterval(interval);
+    return () => {
+      ac.abort();
+      clearInterval(interval);
+    };
   }, [projectId, isActive]);
 
   if (!projectId) return null;

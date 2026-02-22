@@ -189,19 +189,27 @@ export function DataEngine() {
 
   useEffect(() => {
     setLoading(true);
+    const ac = new AbortController();
     const url = activeProjectId ? `/api/experts?projectId=${activeProjectId}` : '/api/experts';
-    fetch(url, { credentials: 'include' })
+    fetch(url, { credentials: 'include', signal: ac.signal })
       .then((r) => r.json())
       .then((d) => {
-        const list = d.experts ?? [];
-        setExperts(list);
-        setResultCount(list.length);
+        if (!ac.signal.aborted) {
+          const list = d.experts ?? [];
+          setExperts(list);
+          setResultCount(list.length);
+        }
       })
-      .catch(() => {
-        setExperts([]);
-        setResultCount(0);
+      .catch((err) => {
+        if (!ac.signal.aborted && err?.name !== 'AbortError') {
+          setExperts([]);
+          setResultCount(0);
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+    return () => ac.abort();
   }, [activeProjectId, setResultCount]);
 
   useEffect(() => {
@@ -274,7 +282,7 @@ export function DataEngine() {
   }
 
   return (
-    <div className="flex-1 flex flex-col glass-dark rounded-lg overflow-hidden min-h-0">
+    <div className="flex-1 flex flex-col glass-dark rounded-3xl overflow-hidden min-h-0">
       <div ref={parentRef} className="flex-1 min-h-0 overflow-auto" style={{ contain: 'strict' }}>
         <table className="w-full text-sm border-collapse" style={{ tableLayout: 'fixed' }}>
           <thead className="sticky top-0 z-10">
@@ -385,7 +393,9 @@ export function DataEngine() {
                       width: '100%',
                       transform: `translate3d(0,${virtualRow.start}px,0)`,
                     }}
-                    className="border-b border-expert-frost-border/30 hover:bg-expert-frost/50 cursor-pointer transition-colors"
+                    whileHover={{ backgroundColor: 'rgba(255,255,255,0.08)' }}
+                    transition={SPRING.snappy}
+                    className="border-b border-white/5 cursor-pointer"
                   >
                     {row.getVisibleCells().map((cell) => (
                       <td key={cell.id} style={{ width: cell.column.getSize() }} className="py-2 px-3">

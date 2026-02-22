@@ -75,7 +75,17 @@ const columns = [
           {row.original.name.charAt(0).toUpperCase()}
         </div>
         <div>
-          <p className="font-medium text-slate-900">{row.original.name}</p>
+          <div className="flex items-center gap-1.5">
+            <p className="font-medium text-slate-900">{row.original.name}</p>
+            {row.original.sourceVerified === false && (
+              <span
+                className="inline-flex items-center px-1.5 py-0.5 rounded text-[9px] font-medium bg-amber-100 text-amber-800 border border-amber-200"
+                title="Unverified: created from input only, no scraped sources"
+              >
+                Unverified
+              </span>
+            )}
+          </div>
           <p className="text-xs text-slate-500">
             {row.original.industry} · {row.original.subIndustry}
           </p>

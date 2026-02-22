@@ -7,21 +7,30 @@ import OpenAI from 'openai';
  * OpenAI: use OPENAI_API_KEY
  */
 function getClient(): OpenAI {
-  const provider = (process.env.EMBEDDING_PROVIDER || 'xai').toLowerCase();
+  const provider = (process.env.EMBEDDING_PROVIDER || 'xai').toLowerCase().trim();
   const useOpenRouter = provider === 'openrouter';
   const useXai = provider === 'xai' || provider === 'grok';
-  const apiKey = useOpenRouter
+  const raw = useOpenRouter
     ? process.env.OPENROUTER_API_KEY
     : useXai
       ? process.env.XAI_API_KEY
       : process.env.OPENAI_API_KEY;
+  const apiKey = raw?.trim();
   const baseURL = useOpenRouter
     ? 'https://openrouter.ai/api/v1'
     : useXai
       ? 'https://api.x.ai/v1'
       : undefined;
+
+  if (!apiKey || apiKey.length < 10) {
+    const varName = useOpenRouter ? 'OPENROUTER_API_KEY' : useXai ? 'XAI_API_KEY' : 'OPENAI_API_KEY';
+    throw new Error(
+      `Missing or invalid ${varName}. Set EMBEDDING_PROVIDER=openrouter and OPENROUTER_API_KEY in Vercel env (Settings → Environment Variables).`
+    );
+  }
+
   return new OpenAI({
-    apiKey: apiKey ?? 'dummy-build-key',
+    apiKey,
     baseURL,
   });
 }

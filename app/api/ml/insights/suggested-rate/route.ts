@@ -51,6 +51,7 @@ export async function POST(req: NextRequest) {
         region: region ?? '',
         industry: industry ?? 'Other',
       }),
+      signal: AbortSignal.timeout(10_000),
     });
 
     if (!res.ok) {

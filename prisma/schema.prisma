@@ -110,6 +110,7 @@ model Expert {
   reacquisitionPriority Boolean        @default(false) @map("reacquisition_priority") // High priority when moved by Enforcer
   linkedinUrl          String?        @map("linkedin_url")   // for check-exists (n8n ENRICH vs CREATE)
   emailHash            String?        @map("email_hash")    // for check-exists
+  sourceVerified       Boolean?       @map("source_verified") // true = scraped; false = Minimal Callback (input-only)
   // Apex Hunter: multi-source scent trails (A=Social, B=IP, C=Market, D=Internal)
   expertFootprint      Json?          @map("expert_footprint")  // { trailA, trailB, trailC, trailD } boolean
   yearsBySource        Json?          @map("years_by_source")  // { linkedin?, patent?, internal? } for liar detector
@@ -135,6 +136,8 @@ model Expert {
   tickets         Ticket[]
   engagements     Engagement[]
   contactAttempts ContactAttempt[]  // no-spam: count per week
+  candidates      ExpertCandidate[]  // Identity disambiguation: multiple people with same name
+  sources         ExpertSource[]     // Source provenance (LinkedIn, company site, etc.)
 
   @@index([industry])
   @@index([ownerId])
@@ -155,6 +158,47 @@ model ExpertVector {
   expert Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
 
   @@map("expert_vectors")
+}
+
+// Identity disambiguation: candidates for a given name (before resolution)
+model ExpertCandidate {
+  id             String   @id @default(cuid())
+  expertId       String   @map("expert_id")
+  normalizedName String   @map("normalized_name")
+  sourceType     String   @map("source_type")   // linkedin, company_site, manual
+  sourceUrl      String?  @map("source_url")
+  photoUrl       String?  @map("photo_url")
+  headline       String?
+  company        String?
+  location       String?
+  industry       String?
+  education      String?
+  summary        String?
+  matchScore     Float    @default(0) @map("match_score")
+  confidence     Float    @default(0) @map("confidence")
+  retrievedAt    DateTime @default(now()) @map("retrieved_at")
+  createdAt      DateTime @default(now()) @map("created_at")
+
+  expert Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@unique([expertId, sourceType])
+  @@index([normalizedName])
+  @@map("expert_candidates")
+}
+
+// Source provenance for each expert
+model ExpertSource {
+  id          String   @id @default(cuid())
+  expertId    String   @map("expert_id")
+  sourceType  String   @map("source_type")
+  sourceUrl   String?  @map("source_url")
+  retrievedAt DateTime @default(now()) @map("retrieved_at")
+  rawPayload  Json?    @map("raw_payload")
+
+  expert Expert @relation(fields: [expertId], references: [id], onDelete: Cascade)
+
+  @@index([expertId])
+  @@map("expert_sources")
 }
 
 // Privacy First: contact data separate for field-level encryption

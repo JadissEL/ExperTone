@@ -12,7 +12,13 @@ const MAX_ATTEMPTS_WITHOUT_BOOKING = 3;
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    return NextResponse.json(
+      { error: 'CRON_SECRET not configured', code: 'CONFIG_ERROR' },
+      { status: 503 }
+    );
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 

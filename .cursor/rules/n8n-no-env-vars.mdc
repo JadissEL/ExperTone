@@ -1,0 +1,32 @@
+---
+description: Never use n8n env vars; always use Config node or other workarounds
+globs: n8n-deploy/**/*.json,**/workflows/*.json
+alwaysApply: true
+---
+
+# n8n: No Environment Variables
+
+**Never suggest setting environment variables in n8n.** The user does not want to pay for that feature.
+
+## Workarounds (always prefer these)
+
+1. **Config node** — Use a Code node at the start of the workflow that defines all secrets and URLs in a single object, then reference `$('Config').first().json.VAR_NAME` in other nodes.
+2. **Hardcoded in workflow** — For non-sensitive values (URLs, IDs), embed directly in node parameters.
+3. **Credentials in n8n** — Use n8n's built-in credential storage (free) when the node type supports it.
+4. **Backend proxy** — If a secret is needed for an external API, call your Next.js/Vercel API instead; the API holds the secret.
+
+## Example: Config node pattern
+
+```javascript
+// Config node (Code node at workflow start)
+const C = {
+  GOOGLE_API_KEY: '...',
+  GOOGLE_CSE_ID: '...',
+  SHARED_SECRET: '...',
+  CALLBACK_URL: 'https://app.vercel.app/api/webhooks/n8n-callback'
+};
+const inp = $input.first().json;
+return [{ json: { ...C, body: inp.body || inp } }];
+```
+
+Other nodes reference: `{{ $('Config').first().json.GOOGLE_API_KEY }}`

@@ -19,6 +19,7 @@
     "expiry:fake-age": "npx tsx scripts/fake-expert-age.ts",
     "db:seed": "npx tsx scripts/seed.ts",
     "db:seed-embeddings": "npx tsx scripts/seed-with-embeddings.ts",
+    "db:backfill-embeddings": "npx tsx scripts/backfill-experts-without-embeddings.ts",
     "test": "jest",
     "test:watch": "jest --watch",
     "test:coverage": "jest --coverage",

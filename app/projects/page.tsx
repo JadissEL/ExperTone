@@ -6,62 +6,48 @@ export default async function ProjectsPage() {
   const projects = await getResearchProjects();
 
   return (
-    <main style={{ padding: '1.5rem 2rem', fontFamily: 'system-ui', maxWidth: 800 }}>
-      <div style={{ marginBottom: '1.5rem' }}>
-        <Link href="/" style={{ color: '#64748b', textDecoration: 'none', fontSize: '0.9rem' }}>
+    <main className="min-h-screen bg-aether-base mesh-bg px-6 py-8 font-sans" style={{ maxWidth: 800, margin: '0 auto' }}>
+      <div className="mb-6">
+        <Link href="/" className="text-slate-400 hover:text-slate-200 no-underline text-sm">
           ← ExperTone
         </Link>
-        <h1 style={{ marginTop: '0.25rem', fontSize: '1.5rem' }}>Research Projects</h1>
-        <p style={{ marginTop: '0.25rem', color: '#64748b', fontSize: '0.9rem' }}>
+        <h1 className="mt-1 text-xl font-semibold text-white">Research Projects</h1>
+        <p className="mt-1 text-sm text-slate-400">
           Create a project to trigger the Expert Hunter workflow in n8n.
         </p>
       </div>
 
       <ConciergeBriefBuilder />
 
-      <section>
-        <h2 style={{ fontSize: '1rem', marginBottom: '0.75rem' }}>Recent projects</h2>
+      <section className="rounded-2xl bg-white/5 border border-white/10 backdrop-blur-xl p-4">
+        <h2 className="text-base font-medium text-white mb-3">Recent projects</h2>
         {projects.length === 0 ? (
-          <p style={{ color: '#64748b', fontSize: '0.9rem' }}>No projects yet. Create one above.</p>
+          <p className="text-sm text-slate-400">No projects yet. Create one above.</p>
         ) : (
-          <ul style={{ listStyle: 'none', padding: 0, margin: 0 }}>
+          <ul className="list-none p-0 m-0 space-y-2">
             {projects.map((p) => (
               <li
                 key={p.id}
-                style={{
-                  padding: '0.75rem 1rem',
-                  border: '1px solid #e2e8f0',
-                  borderRadius: 8,
-                  marginBottom: '0.5rem',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                }}
+                className="flex justify-between items-center p-3 rounded-xl bg-white/5 border border-white/10 hover:bg-white/[0.07] transition-colors"
               >
                 <div>
-                  <Link href={`/projects/${p.id}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                    <strong>{p.title}</strong>
+                  <Link href={`/projects/${p.id}`} className="text-white font-medium no-underline hover:text-emerald-400">
+                    {p.title}
                   </Link>
                   <span
-                    style={{
-                      marginLeft: '0.5rem',
-                      fontSize: '0.8rem',
-                      color: p.status === 'COMPLETED' ? '#22c55e' : p.status === 'RUNNING' ? '#f59e0b' : '#64748b',
-                    }}
+                    className={`ml-2 text-xs ${
+                      p.status === 'COMPLETED' ? 'text-emerald-400' : p.status === 'RUNNING' ? 'text-amber-400' : 'text-slate-400'
+                    }`}
                   >
                     {p.status}
                   </span>
-                  <p style={{ margin: '0.25rem 0 0', fontSize: '0.85rem', color: '#64748b' }}>
+                  <p className="mt-0.5 text-xs text-slate-400">
                     {p._count.results} results
                   </p>
                 </div>
                 <Link
                   href={`/projects/${p.id}`}
-                  style={{
-                    fontSize: '0.85rem',
-                    color: '#4a9eff',
-                    textDecoration: 'underline',
-                  }}
+                  className="text-sm text-sky-400 hover:text-sky-300 underline"
                 >
                   View →
                 </Link>

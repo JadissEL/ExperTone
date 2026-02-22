@@ -31,3 +31,10 @@ __pycache__/
 *.swo
 .vercel
 .env*.local
+.env.key
+.env.vercel.check
+.vercel-tmp-*
+
+# n8n deploy package (contains SHARED_SECRET)
+n8n-deploy/
+n8n-deploy-*.zip

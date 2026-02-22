@@ -130,6 +130,7 @@ export async function GET(
     requiresManualScreening: expertData.mnpiRiskLevel === 'HIGH_RISK_MNPI',
     contactCloaked: expertData.contactCloaked ?? false,
     contactRevealGranted: revealContacts,
+    sourceVerified: expert.sourceVerified ?? null,
     engagements,
   });
 }

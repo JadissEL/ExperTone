@@ -68,12 +68,14 @@ export function CommandCenterClient() {
               fetch(`/api/projects/${activeProject.id}/rerank`, {
                 method: 'POST',
                 credentials: 'include',
-              }).then(() => poll());
+              })
+                .then(() => poll())
+                .catch((err) => console.warn('[CommandCenter] Rerank failed:', err));
             }
           }
         }
-      } catch {
-        // ignore
+      } catch (err) {
+        console.warn('[CommandCenter] Poll failed:', err);
       }
     };
 

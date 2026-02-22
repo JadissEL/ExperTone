@@ -1,10 +1,15 @@
+import { randomUUID } from 'crypto';
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { verifyWebhookSignature, getSignatureFromRequest } from '@/lib/webhook-verify';
+import { generateEmbedding } from '@/lib/openai';
 import { computeReputationScore } from '@/lib/reputation';
 import { encryptContactValue } from '@/lib/pii';
 import { parseBody } from '@/lib/api-validate';
 import { n8nCallbackBodySchema } from '@/lib/schemas/api';
+import { fetchWithTimeout } from '@/lib/fetch-with-timeout';
+import { logger } from '@/lib/logger';
+import { startRequestTimer } from '@/lib/api-instrument';
 
 function normalizeName(name: string): string {
   return name
@@ -30,10 +35,12 @@ async function findExistingExpert(
 
   if (contacts?.length) {
     for (const c of contacts) {
+      const val = typeof c?.value === 'string' ? c.value.trim() : '';
+      if (!val) continue;
       const byContact = await prisma.expert.findFirst({
         where: {
           contacts: {
-            some: { value: c.value },
+            some: { value: val },
           },
         },
         select: { id: true },
@@ -52,24 +59,36 @@ async function findExistingExpert(
 }
 
 export async function POST(req: NextRequest) {
+  const timer = startRequestTimer('/api/webhooks/n8n-callback', 'POST');
   const rawBody = await req.text();
   const signature = getSignatureFromRequest(req.headers);
 
-  if (process.env.SHARED_SECRET || process.env.N8N_WEBHOOK_SECRET) {
-    if (!verifyWebhookSignature(rawBody, signature)) {
-      return NextResponse.json({ error: 'Invalid signature' }, { status: 401 });
-    }
+  const webhookSecret = process.env.SHARED_SECRET || process.env.N8N_WEBHOOK_SECRET;
+  if (!webhookSecret) {
+    timer.done(401);
+    return NextResponse.json(
+      { error: 'Webhook secret not configured', code: 'CONFIG_ERROR' },
+      { status: 503 }
+    );
+  }
+  if (!verifyWebhookSignature(rawBody, signature)) {
+    timer.done(401);
+    return NextResponse.json({ error: 'Invalid signature', code: 'INVALID_SIGNATURE' }, { status: 401 });
   }
 
   let rawPayload: unknown;
   try {
     rawPayload = JSON.parse(rawBody);
   } catch {
+    timer.done(400);
     return NextResponse.json({ error: 'Invalid JSON', code: 'VALIDATION_ERROR' }, { status: 400 });
   }
 
   const parsed = parseBody(n8nCallbackBodySchema, rawPayload);
-  if (!parsed.success) return parsed.response;
+  if (!parsed.success) {
+    timer.done(400);
+    return parsed.response;
+  }
   const payload = parsed.data;
 
   const projectId = payload.projectId ?? payload.project_id;
@@ -83,7 +102,8 @@ export async function POST(req: NextRequest) {
   });
 
   if (!project) {
-    return NextResponse.json({ error: 'Project not found' }, { status: 404 });
+    timer.done(404);
+    return NextResponse.json({ error: 'Project not found', code: 'NOT_FOUND' }, { status: 404 });
   }
 
   const experts = payload.experts ?? [];
@@ -109,12 +129,13 @@ export async function POST(req: NextRequest) {
           update: {},
         });
         results.push({ expertId: existing.id, alreadyExisting: true });
-      } catch {
-        // Skip duplicates
+      } catch (err) {
+        logger.warn({ err, projectId, expertId: existing.id }, '[n8n-callback] ResearchResult upsert failed');
       }
       continue;
     }
 
+    const sourceVerified = e.source_verified ?? (e.contacts?.length ? true : null);
     const newExpert = await prisma.expert.create({
       data: {
         name: e.name.trim(),
@@ -127,19 +148,21 @@ export async function POST(req: NextRequest) {
         predictedRate: (e.predicted_rate as number) ?? 150,
         ownerId: project.creatorId,
         visibilityStatus: 'PRIVATE',
+        sourceVerified: sourceVerified ?? undefined,
       },
     });
 
     if (e.contacts?.length) {
-      for (const c of e.contacts) {
-        await prisma.expertContact.create({
-          data: {
-            expertId: newExpert.id,
-            type: c.type?.toUpperCase() === 'PHONE' ? 'PHONE' : 'EMAIL',
-            value: encryptContactValue(String(c.value).trim()),
-            source: 'n8n_scrape',
-          },
-        });
+      const contactData = e.contacts
+        .filter((c) => typeof c?.value === 'string' && c.value.trim())
+        .map((c) => ({
+          expertId: newExpert.id,
+          type: (c.type?.toUpperCase() === 'PHONE' ? 'PHONE' : 'EMAIL') as 'PHONE' | 'EMAIL',
+          value: encryptContactValue(String(c.value).trim()),
+          source: 'n8n_scrape',
+        }));
+      if (contactData.length > 0) {
+        await prisma.expertContact.createMany({ data: contactData });
       }
     }
 
@@ -152,19 +175,40 @@ export async function POST(req: NextRequest) {
       },
     });
 
+    // Embedding for Hunter Search / semantic search (expert_vectors)
+    const embeddingText = `${newExpert.industry} ${newExpert.subIndustry}`.trim();
+    if (embeddingText.length > 0) {
+      try {
+        const embedding = await generateEmbedding(embeddingText);
+        const vectorStr = `[${embedding.join(',')}]`;
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO expert_vectors (id, expert_id, embedding) VALUES ($1, $2, $3::vector)`,
+          randomUUID(),
+          newExpert.id,
+          vectorStr
+        );
+      } catch (err) {
+        logger.warn({ err, expertId: newExpert.id }, '[n8n-callback] Embedding failed, expert created without vector');
+      }
+    }
+
     // Intelligence Layer: suggested rate + reputation (non-blocking best-effort)
     const mlUrl = process.env.ML_SERVICE_URL || 'http://localhost:8000';
-    fetch(`${mlUrl}/insights/suggested-rate`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        seniority_score: newExpert.seniorityScore,
-        years_experience: newExpert.yearsExperience,
-        country: newExpert.country ?? '',
-        region: newExpert.region ?? '',
-        industry: newExpert.industry ?? 'Other',
-      }),
-    })
+    fetchWithTimeout(
+      `${mlUrl}/insights/suggested-rate`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          seniority_score: newExpert.seniorityScore,
+          years_experience: newExpert.yearsExperience,
+          country: newExpert.country ?? '',
+          region: newExpert.region ?? '',
+          industry: newExpert.industry ?? 'Other',
+        }),
+      },
+      8000
+    )
       .then((r) => r.ok ? r.json() : null)
       .then((data) => {
         if (data && typeof data.suggested_rate_min === 'number' && typeof data.suggested_rate_max === 'number') {
@@ -174,8 +218,10 @@ export async function POST(req: NextRequest) {
           });
         }
       })
-      .catch(() => {});
-    computeReputationScore(newExpert.id, { persist: true }).catch(() => {});
+      .catch((err) => logger.warn({ err, expertId: newExpert.id }, '[n8n-callback] ML suggested-rate failed'));
+    computeReputationScore(newExpert.id, { persist: true }).catch((err) =>
+      logger.warn({ err, expertId: newExpert.id }, '[n8n-callback] Reputation score failed')
+    );
 
     results.push({ expertId: newExpert.id, alreadyExisting: false });
   }
@@ -187,6 +233,7 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  timer.done(200);
   return NextResponse.json({
     ok: true,
     projectId,

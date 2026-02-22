@@ -11,6 +11,7 @@ import { generateEmbedding } from '@/lib/openai';
 import { parseBody } from '@/lib/api-validate';
 import { hunterSearchBodySchema } from '@/lib/schemas/api';
 import { logger } from '@/lib/logger';
+import { startRequestTimer } from '@/lib/api-instrument';
 
 const UNFINDABLE_BOOST = 1.25;
 const MAX_PAGE_SIZE = 100;
@@ -59,8 +60,10 @@ function nameMatches(query: string, expertName: string): boolean {
 }
 
 export async function POST(req: NextRequest) {
+  const timer = startRequestTimer('/api/hunter/search', 'POST');
   const { userId } = await auth();
   if (!userId) {
+    timer.done(401);
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -68,11 +71,15 @@ export async function POST(req: NextRequest) {
   try {
     rawBody = await req.json();
   } catch {
+    timer.done(400);
     return NextResponse.json({ error: 'Invalid JSON', code: 'VALIDATION_ERROR' }, { status: 400 });
   }
 
   const parsed = parseBody(hunterSearchBodySchema, rawBody);
-  if (!parsed.success) return parsed.response;
+  if (!parsed.success) {
+    timer.done(400);
+    return parsed.response;
+  }
   const { query, page, pageSize, nameFilter } = parsed.data;
 
   try {
@@ -94,6 +101,7 @@ export async function POST(req: NextRequest) {
     const similarityMap = new Map(raw.map((r) => [r.expert_id, r.similarity]));
 
     if (expertIds.length === 0) {
+      timer.done(200);
       return NextResponse.json({
         results: [],
         total: 0,
@@ -182,6 +190,7 @@ export async function POST(req: NextRequest) {
       ).catch((err) => console.warn('[Hunter] seniorityFlag persist:', err));
     }
 
+    timer.done(200);
     return NextResponse.json({
       results: pageRows.map((r) => ({
         id: r.expert.id,
@@ -199,6 +208,7 @@ export async function POST(req: NextRequest) {
         lastEngagement: r.lastEngagement?.toISOString() ?? null,
         scentTrails: r.footprint ?? { trailA: false, trailB: false, trailC: false, trailD: true },
         seniorityFlag: r.seniorityFlag,
+        sourceVerified: r.expert.sourceVerified ?? null,
       })),
       total,
       page: p,
@@ -206,6 +216,7 @@ export async function POST(req: NextRequest) {
       totalPages,
     });
   } catch (err) {
+    timer.done(500);
     logger.error({ err }, 'Hunter search error');
     const msg = err instanceof Error ? err.message : 'Unknown error';
     // Surface common config issues for easier debugging

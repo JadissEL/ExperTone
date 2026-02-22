@@ -40,6 +40,8 @@ export interface Expert {
   pastEmployers?: string[] | null;
   skills?: string[] | null;
   contacts?: ExpertContact[];
+  /** true = scraped; false = Minimal Callback (input-only, unverified) */
+  sourceVerified?: boolean | null;
   createdAt?: Date;
   updatedAt?: Date;
 }

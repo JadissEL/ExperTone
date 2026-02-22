@@ -42,6 +42,14 @@ export const hunterSearchBodySchema = z.object({
 // --- Projects ---
 export const projectIdParamsSchema = z.object({ id: commonSchemas.cuid });
 
+// --- Expert resolve (identity disambiguation) ---
+export const expertResolveQuerySchema = z.object({
+  name: z.string().min(1).max(500).trim(),
+  projectId: commonSchemas.optionalCuid,
+  expertId: commonSchemas.optionalCuid,
+  matchScore: z.coerce.number().min(0).max(1).optional(),
+});
+
 // --- Hunter add-to-project ---
 export const addToProjectBodySchema = z.object({
   expertId: commonSchemas.cuid,
@@ -64,6 +72,7 @@ const inboundExpertSchema = z.object({
     .array(z.object({ type: z.string(), value: z.string() }))
     .optional(),
   already_existing_flag: z.boolean().optional(),
+  source_verified: z.boolean().optional(), // false = Minimal Callback (no scraped sources)
 });
 
 export const n8nCallbackBodySchema = z

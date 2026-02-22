@@ -42,7 +42,7 @@ export class ValidationError extends AppError {
   }
 }
 
-export function toJsonResponse(err: unknown): { status: number; body: { error: string; code?: string; details?: unknown } } {
+export function toJsonResponse(err: unknown): { status: number; body: { error: string; code?: string; details?: unknown; hint?: string } } {
   if (err instanceof AppError) {
     return {
       status: err.statusCode,
@@ -58,4 +58,18 @@ export function toJsonResponse(err: unknown): { status: number; body: { error: s
     status: 500,
     body: { error: message, code: 'INTERNAL_ERROR' },
   };
+}
+
+/** Standardized API error shape for NextResponse.json */
+export type ApiErrorBody = {
+  error: string;
+  code?: string;
+  details?: unknown;
+  hint?: string;
+};
+
+/** Create NextResponse with standardized error format */
+export function apiError(status: number, error: string, opts?: { code?: string; details?: unknown; hint?: string }) {
+  const body: ApiErrorBody = { error, ...opts };
+  return Response.json(body, { status });
 }

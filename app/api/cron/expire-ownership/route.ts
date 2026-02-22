@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { Prisma } from '@prisma/client';
+import { logger } from '@/lib/logger';
 
 const BATCH_LIMIT = 500;
 const ADVISORY_LOCK_ID = 0x457870697279456e67696e; // "ExpiryEngine" in hex
@@ -13,7 +14,13 @@ const ADVISORY_LOCK_ID = 0x457870697279456e67696e; // "ExpiryEngine" in hex
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization');
   const cronSecret = process.env.CRON_SECRET;
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret) {
+    return NextResponse.json(
+      { error: 'CRON_SECRET not configured', code: 'CONFIG_ERROR' },
+      { status: 503 }
+    );
+  }
+  if (authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
@@ -75,28 +82,24 @@ export async function GET(req: NextRequest) {
         WHERE id IN (${Prisma.join(ids)})
       `);
 
-      for (const c of candidates) {
-        await tx.auditLog.create({
-          data: {
-            actorId: null,
-            targetId: c.id,
-            action: 'AUTO_EXPIRY',
-            metadata: {
-              reason: 'Moved to global due to 30-day contact missing',
-              expertName: c.name,
-              previousOwnerId: c.owner_id,
-            },
-          },
-        });
-        await tx.notification.create({
-          data: {
-            userId: c.owner_id,
-            type: 'EXPERT_EXPIRED',
-            title: 'Expert moved to Global Pool',
-            body: `Expert ${c.name} has been moved to the Global Pool due to inactivity.`,
-          },
-        });
-      }
+      const auditData = candidates.map((c) => ({
+        actorId: null as string | null,
+        targetId: c.id,
+        action: 'AUTO_EXPIRY' as const,
+        metadata: {
+          reason: 'Moved to global due to 30-day contact missing',
+          expertName: c.name,
+          previousOwnerId: c.owner_id,
+        },
+      }));
+      const notificationData = candidates.map((c) => ({
+        userId: c.owner_id,
+        type: 'EXPERT_EXPIRED',
+        title: 'Expert moved to Global Pool',
+        body: `Expert ${c.name} has been moved to the Global Pool due to inactivity.`,
+      }));
+      if (auditData.length > 0) await tx.auditLog.createMany({ data: auditData });
+      if (notificationData.length > 0) await tx.notification.createMany({ data: notificationData });
 
       return {
         acquired: true,
@@ -120,9 +123,9 @@ export async function GET(req: NextRequest) {
       dryRun: result.dryRun,
     });
   } catch (err) {
-    console.error('[ExpiryEngine]', err);
+    logger.error({ err }, '[ExpiryEngine] Failed');
     return NextResponse.json(
-      { error: 'Expiry job failed', message: String(err) },
+      { error: 'Expiry job failed', code: 'CRON_ERROR', details: err instanceof Error ? err.message : String(err) },
       { status: 500 }
     );
   }

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/prisma';
 import { requireAdminApi } from '@/lib/requireAdminApi';
+import { logger } from '@/lib/logger';
 
 const GAP_THRESHOLD = 5;
 
@@ -22,6 +23,7 @@ export async function GET() {
   const auth = await requireAdminApi();
   if (auth.response) return auth.response;
 
+  try {
   const activeProjects = await prisma.researchProject.findMany({
     where: { status: { in: ['PENDING', 'RUNNING'] } },
     select: { id: true, title: true, filterCriteria: true },
@@ -80,4 +82,8 @@ export async function GET() {
     gaps,
     gapThreshold: GAP_THRESHOLD,
   });
+  } catch (err) {
+    logger.error({ err }, '[admin/liquidity] Failed');
+    return NextResponse.json({ error: 'Failed to compute liquidity' }, { status: 500 });
+  }
 }

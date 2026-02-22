@@ -33,25 +33,34 @@ export default function KnowledgeGraphClient() {
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    const ac = new AbortController();
     fetch('/api/ml/graph/visualize', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ limit: 200 }),
       credentials: 'include',
+      signal: ac.signal,
     })
       .then((r) => {
         if (!r.ok) throw new Error(r.statusText);
         return r.json();
       })
       .then((d) => {
-        setData(d);
-        setError(null);
+        if (!ac.signal.aborted) {
+          setData(d);
+          setError(null);
+        }
       })
       .catch((e) => {
-        setError(e.message || 'Failed to load graph');
-        setData(null);
+        if (!ac.signal.aborted && e?.name !== 'AbortError') {
+          setError(e.message || 'Failed to load graph');
+          setData(null);
+        }
       })
-      .finally(() => setLoading(false));
+      .finally(() => {
+        if (!ac.signal.aborted) setLoading(false);
+      });
+    return () => ac.abort();
   }, []);
 
   if (loading) {
