@@ -138,8 +138,9 @@ export function ConciergeBriefBuilder() {
     }
   };
 
+  const MotionSection = motion.section;
   return (
-    <motion.section
+    <MotionSection
       animate={reducedMotion ? false : { y: FLOAT.y }}
       transition={reducedMotion ? { duration: 0 } : { duration: FLOAT.duration, repeat: Infinity, ease: FLOAT.ease }}
       className="relative rounded-3xl border border-white/10 bg-white/5 backdrop-blur-xl p-6 mb-6 aether-luminous overflow-hidden"
@@ -339,6 +340,6 @@ export function ConciergeBriefBuilder() {
       >
         {loading ? 'Launching...' : 'Launch Precision Hunt'}
       </button>
-    </section>
+    </MotionSection>
   );
 }
