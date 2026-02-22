@@ -133,11 +133,12 @@ export async function POST(req: NextRequest) {
         // Enrichment: persist source provenance and update expert when n8n sends new data
         const linkedinUrl = typeof e.linkedin_url === 'string' && e.linkedin_url.trim() ? e.linkedin_url.trim() : null;
         if (linkedinUrl) {
-          const existingSource = await prisma.expertSource.findFirst({
+          const expertSource = (prisma as unknown as { expertSource: { findFirst: (o: object) => Promise<{ id: string } | null>; create: (o: object) => Promise<unknown> } }).expertSource;
+          const existingSource = await expertSource.findFirst({
             where: { expertId: existing.id, sourceType: 'linkedin' },
           });
           if (!existingSource) {
-            await prisma.expertSource.create({
+            await expertSource.create({
               data: { expertId: existing.id, sourceType: 'linkedin', sourceUrl: linkedinUrl },
             });
           }
@@ -198,10 +199,10 @@ export async function POST(req: NextRequest) {
         predictedRate: (e.predicted_rate as number) ?? 150,
         ownerId: project.creatorId,
         visibilityStatus: 'PRIVATE',
-        sourceVerified: sourceVerified ?? undefined,
-        linkedinUrl: linkedinUrl ?? undefined,
-        pastEmployers: pastEmployers ?? undefined,
-        skills: skills ?? undefined,
+        ...(sourceVerified != null && { sourceVerified }),
+        ...(linkedinUrl != null && { linkedinUrl }),
+        ...(pastEmployers != null && { pastEmployers }),
+        ...(skills != null && { skills }),
       },
     });
 
@@ -220,7 +221,8 @@ export async function POST(req: NextRequest) {
     }
 
     if (linkedinUrl) {
-      await prisma.expertSource.create({
+      const expertSource = (prisma as unknown as { expertSource: { create: (o: object) => Promise<unknown> } }).expertSource;
+      await expertSource.create({
         data: { expertId: newExpert.id, sourceType: 'linkedin', sourceUrl: linkedinUrl },
       });
     }
