@@ -1,0 +1,2936 @@
+{
+  "name": "Expert Hunter",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "hunt",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "4986a0a4-3705-46a6-89ca-a7a7c9fbd680",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        -2928,
+        256
+      ],
+      "webhookId": "88be1ed1-2c26-4185-9b0f-6adaedca2b9b"
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst projectId = body.projectId ?? body.project_id ?? '';\nconst query = body.query ?? '';\nconst filterCriteria = body.filterCriteria ?? body.filter_criteria ?? {};\nconst projectTitle = body.projectTitle ?? body.project_title ?? 'Untitled Hunt';\nlet experts = body.experts;\nif (!Array.isArray(experts) || experts.length === 0) {\n  const name = (body.expertName ?? body.expert_name ?? '').toString().trim();\n  experts = name ? [{ name, company: body.company ?? '', title: body.title ?? '', location: body.location ?? body.filterCriteria?.countries?.[0] ?? '', industry: body.industry ?? body.filterCriteria?.industry ?? 'Other' }] : [];\n}\nconst base = { projectId, query, filterCriteria, projectTitle };\nif (experts.length === 0) return [{ json: { ...base, expertName: '', company: '', title: '', location: '', industry: 'Other' } }];\nconst norm = (s,n) => (s||'').toString().trim().slice(0,n||200);\nreturn experts.map(e => ({ json: { ...base, expertName: norm(e.name,100), company: norm(e.company,150), title: norm(e.title,150), location: norm(e.location,100) || base.filterCriteria?.countries?.[0] || '', industry: norm(e.industry,100) || 'Other' } }));"
+      },
+      "id": "65ce8ad4-98ad-4c02-ad07-0a4d56d3f9b7",
+      "name": "Extract Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2704,
+        256
+      ],
+      "notesInFlow": true,
+      "notes": "Supports body.experts[] (batch) or body.expertName (single)"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "collect-mode",
+              "leftValue": "={{ $json.expertName }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "46fcb21e-b4ce-48b2-a6a9-f08378c93b42",
+      "name": "Collect Mode?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2480,
+        256
+      ],
+      "notesInFlow": true,
+      "notes": "expertName present = collect & enrich; else = ML rank only"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-project",
+              "leftValue": "={{ $json.projectId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            },
+            {
+              "id": "has-name",
+              "leftValue": "={{ $json.expertName }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "06535dac-e87f-4adf-87cc-c93da23eca0f",
+      "name": "Valid Collect Input?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const name = $input.first().json.expertName || '';\nconst company = $input.first().json.company || '';\nconst title = $input.first().json.title || '';\nconst location = $input.first().json.location || '';\nconst industry = $input.first().json.industry || '';\nconst linkedInQuery = `\"${name}\" site:linkedin.com/in`;\nconst contextParts = [company, title, location, industry].filter(Boolean);\nconst contextStr = contextParts.length ? contextParts.join(' ') : '';\nconst publicQuery = contextStr ? `\"${name}\" ${contextStr}` : `\"${name}\"`;\nreturn [{ json: { ...($input.first().json), linkedInQuery, publicQuery } }];"
+      },
+      "id": "5447880f-0472-46ee-b595-3ea9621acb68",
+      "name": "Build Search Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -2048,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const data = $input.first().json;\nconst items = data?.items || [];\nconst ctx = $('Build Search Queries').first().json;\nconst name = (ctx.expertName||'').toLowerCase();\nconst liUrls = items.filter(i => i.link && i.link.includes('linkedin.com/in/')).map(i => i.link);\nconst linkedInUrl = liUrls.length === 1 ? liUrls[0] : liUrls.find(u => name.split(' ')[0] && u.toLowerCase().includes(name.split(' ')[0])) || liUrls[0] || null;\nreturn [{ json: { ...ctx, linkedInUrl, _linkedInFound: !!linkedInUrl } }];"
+      },
+      "id": "ddfd2116-74b4-4b08-a779-471173088c89",
+      "name": "Parse LinkedIn URL",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1600,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $input.first().json;\nconst name = (ctx.expertName || '').replace(/\"/g, '');\nconst parts = [ctx.company, ctx.title, ctx.location, ctx.industry].filter(Boolean);\nconst main = parts.length ? `\"${name}\" ${parts.join(' ')}` : `\"${name}\"`;\nreturn [\n  { json: { ...ctx, publicQuery: main } },\n  { json: { ...ctx, publicQuery: `\"${name}\" interview` } },\n  { json: { ...ctx, publicQuery: `\"${name}\" conference speaker` } },\n  { json: { ...ctx, publicQuery: `\"${name}\" keynote` } },\n  { json: { ...ctx, publicQuery: `\"${name}\" board director` } }\n];"
+      },
+      "id": "6bf311cd-2331-4502-b937-34d641d08a63",
+      "name": "Build Public Queries",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1488,
+        64
+      ],
+      "notesInFlow": true,
+      "notes": "Multiple queries: main, interview, conference"
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse LinkedIn URL').first().json;\nconst all = $input.all();\nconst BLOCKED = ['linkedin.com','facebook.com','twitter.com','x.com','instagram.com'];\nconst urls = [...new Set(all.flatMap(i => (i.json?.items || []).map(x => x.link).filter(Boolean)))];\nconst PRIORITY=['forbes','bloomberg','reuters','wsj','company','corp','inc','press','news','.org','conference','speaker','author'];const allowed = urls.filter(u => { try { const h = new URL(u).hostname.toLowerCase(); return !BLOCKED.some(d => h.includes(d)); } catch { return false; } }).sort((a,b)=>{const ha=(a||'').toLowerCase(),hb=(b||'').toLowerCase();const sa=PRIORITY.filter(p=>ha.includes(p)).length,sb=PRIORITY.filter(p=>hb.includes(p)).length;return sb-sa;}).slice(0, 20);\nreturn allowed.map(url => ({ json: { ...ctx, _url: url, _domain: (() => { try { return new URL(url).hostname; } catch { return ''; } })(), _path: (() => { try { return new URL(url).pathname || '/'; } catch { return '/'; } })() } }));"
+      },
+      "id": "180f2b2f-aa0e-4886-9c7a-d412f4936ec8",
+      "name": "Merge Google Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1280,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "url": "=https://{{ $json._domain }}/robots.txt",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 4000
+        }
+      },
+      "id": "fa755132-cb99-4bd7-823c-d8895f7d6d05",
+      "name": "Fetch robots.txt",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -944,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "options": {}
+      },
+      "id": "64b63892-b1d3-495a-9720-929622d1ea8c",
+      "name": "Merge Robots",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -832,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first();\nconst robotsTxt=(item.json?.data||item.json?.body||'').toString();\nconst url=item.json._url;const path=item.json._path||'/';\nconst ctx={...item.json};delete ctx.data;delete ctx.body;\nfunction allowed(r,p){if(!r||!r.trim())return true;\nconst lines=r.split(/\\r?\\n/);let cur=null,ok=true;\nfor(const l of lines){const m=l.match(/^User-agent:\\s*(.+)/i);if(m){cur=m[1].trim().toLowerCase();}\nif(cur==='*'||!cur){const d=l.match(/^Disallow:\\s*(.+)/i);const a=l.match(/^Allow:\\s*(.+)/i);\nif(d){const pat=d[1].trim();if(pat==='/'){ok=false;break;}if(pat&&p.startsWith(pat.replace(/\\*$/,'')))ok=false;}\nif(a){const pat=a[1].trim();if(pat&&p.startsWith(pat.replace(/\\*$/,'')))ok=true;}}}\nreturn ok;}\nreturn[{json:{...ctx,_url:url,_path:path,_scrapeAllowed:allowed(robotsTxt,path)}}];"
+      },
+      "id": "84241fdb-0362-42ed-b64b-821d2940450a",
+      "name": "Check robots.txt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -720,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "allowed",
+              "leftValue": "={{ $json._scrapeAllowed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "74c228b7-19c5-4e9e-a0a6-b6653e8257b1",
+      "name": "Scraping Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -496,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ $json._url }}",
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "text"
+            }
+          },
+          "timeout": 6000
+        }
+      },
+      "id": "21c89d3d-ab74-4979-8401-12d435d4b793",
+      "name": "Scrape Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -288,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "options": {}
+      },
+      "id": "d442f792-9f83-4fc3-9357-58445384e48d",
+      "name": "Merge Context",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -176,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first();\nconst html=(item.json?.data??item.json?.body??'').toString();\nconst sourceUrl=item.json._url||'';\nconst ctx=$('Check robots.txt').first().json;\nconst expertName=(ctx.expertName||'').toLowerCase();\nfunction ext(h,r){const m=h.match(r);return m?m[1].replace(/<[^>]+>/g,'').trim().slice(0,500):null;}\nconst title=ext(html,/<title[^>]*>([\\s\\S]*?)<\\/title>/i)||ext(html,/<meta[^>]+property=\"og:title\"[^>]+content=\"([^\"]+)\"/i);\nconst desc=ext(html,/<meta[^>]+name=[\"']description[\"'][^>]+content=\"([^\"]+)\"/i);\nconst emails=(html.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}/g)||[]).slice(0,3);\nconst liRef=(html.match(/https?:\\/\\/(?:www\\.)?linkedin\\.com\\/in\\/[a-zA-Z0-9_-]+/g)||[])[0]||null;\nlet role=null,company=null;\nconst rm=html.match(/(?:role|title|position|job)[\\s:=]+[\"']?([^\"'<>,]+)/gi);if(rm)role=rm[0].replace(/^(?:role|title|position|job)[\\s:=]+[\"']?/i,'').trim().slice(0,200);\nconst cm=html.match(/(?:company|employer|organization|at)\\s+(?:the\\s+)?[\"']?([^\"'<>,]+)/gi);if(cm)company=cm[0].replace(/^(?:company|employer|organization|at)\\s+(?:the\\s+)?[\"']?/i,'').trim().slice(0,200);\nconst body=html.replace(/<script[^>]*>[\\s\\S]*?<\\/script>/gi,'').replace(/<style[^>]*>[\\s\\S]*?<\\/style>/gi,'').replace(/<[^>]+>/g,' ').replace(/\\s+/g,' ').slice(0,5000);\nconst mentions=expertName&&body.toLowerCase().includes(expertName.split(' ')[0]);\nlet achievements=[];try{const ldMatch=html.match(/<script[^>]+type=[\"']application\\/ld\\+json[\"'][^>]*>([\\s\\S]*?)<\\/script>/i);if(ldMatch){const ld=JSON.parse(ldMatch[1].trim());const arr=Array.isArray(ld)?ld:[ld];const person=arr.find(x=>x['@type']==='Person');if(person&&person.jobTitle)role=role||person.jobTitle;if(person&&person.worksFor)company=company||(person.worksFor.name||person.worksFor);}\nconst sentences=body.match(/[^.!?]*(?:award|speaker|keynote|panel|presented|published)[^.!?]*[.!?]/gi)||[];achievements=sentences.slice(0,3).map(s=>s.trim().slice(0,200));}catch(e){}\nreturn[{json:{sourceUrl,title,description:desc,role,company,emails:[...new Set(emails)],linkedInUrlRef:liRef,mentionsTarget:mentions,achievements,_context:ctx}}];"
+      },
+      "id": "a1029377-02ed-4a48-a3fb-155831cbbe74",
+      "name": "Extract Data",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -48,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "options": {}
+      },
+      "id": "0484196c-41d9-4d16-9ab6-fcf7384a7f14",
+      "name": "Merge Scraped",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        64,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "placeholder",
+              "name": "placeholder",
+              "value": "={{ $json }}",
+              "type": "object"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "5fac5e6d-a436-4d8d-9b18-865a32f38d7d",
+      "name": "No Scrape Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -288,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items=$input.all();\nconst scraped=items.filter(i=>i.json.sourceUrl&&!i.json.placeholder);\nconst ctx=scraped[0]?.json?._context||$('Parse LinkedIn URL').first().json;\nconst expertName=(ctx.expertName||'').trim();\nconst seedCo=(ctx.company||'').toLowerCase();\nconst seedTi=(ctx.title||'').toLowerCase();\nconst records=scraped.map(s=>({sourceUrl:s.json.sourceUrl,title:s.json.title,description:s.json.description,role:s.json.role,company:s.json.company,emails:s.json.emails||[],linkedInRef:s.json.linkedInUrlRef,mentionsTarget:s.json.mentionsTarget,achievements:s.json.achievements||[]}));\nlet conf=0.5,conflict=0;\nconst reasons=[];\nconst companies=[...new Set(records.map(r=>r.company).filter(Boolean))];\nconst roles=[...new Set(records.map(r=>r.role).filter(Boolean))];\nif(companies.length===1&&seedCo&&companies[0]?.toLowerCase().includes(seedCo)){conf+=0.2;reasons.push('company_match');}\nif(roles.length===1&&seedTi&&roles[0]?.toLowerCase().includes(seedTi)){conf+=0.15;reasons.push('title_match');}\nif(records.some(r=>r.mentionsTarget)){conf+=0.15;reasons.push('name_mentioned');}\nif(records.length>=2){conf+=0.1;reasons.push('multiple_sources');}\nif(ctx.linkedInUrl){conf+=0.1;reasons.push('linkedin_found');}\nif(emails.length>0){conf+=0.05;reasons.push('contacts_found');}\nif(companies.length>2&&!seedCo)conflict++;\nconst filtered=records.filter(r=>r.mentionsTarget||r.title||r.description);\nconst emails=[...new Set(filtered.flatMap(r=>r.emails))].slice(0,5);\nconst career=[...new Set(filtered.map(r=>r.role&&r.company?`${r.role} at ${r.company}`:r.role||r.company).filter(Boolean))].slice(0,10);\nconst rawPubs=filtered.filter(r=>r.title).map(r=>({title:(r.title||'').trim(),url:r.sourceUrl}));\nconst seen=new Set();\nconst pubs=rawPubs.filter(p=>{const k=(p.title||'').toLowerCase().slice(0,100);if(seen.has(k))return false;seen.add(k);return true;}).slice(0,10);\nconst sources=[...new Set(filtered.map(r=>r.sourceUrl))];\nconst liUrl=ctx.linkedInUrl||filtered.find(r=>r.linkedInRef)?.linkedInRef||null;\nconst social=liUrl?[{type:'linkedin',url:liUrl}]:[];\nconst expertise=[ctx.industry].filter(Boolean);if(roles.length)expertise.push(...roles.slice(0,3));\nreturn[{json:{fullName:expertName,currentRole:roles[0]||null,currentCompany:companies[0]||null,careerHistory:career,publications:pubs,socialProfiles:social,expertise:[...new Set(expertise)].slice(0,5),skills:[...new Set([...expertise,...(roles||[])])].filter(Boolean).slice(0,15),contactInfo:emails.map(e=>({type:'email',value:e})),sourceUrls:sources,identityConfidence:Math.min(1,conf),confidenceReasons:reasons,ambiguous:conflict>0||companies.length>2,notableAchievements:(records.flatMap(r=>r.achievements||[]).filter(Boolean)).slice(0,5),_context:ctx}}];"
+      },
+      "id": "b6b1384b-c958-4b83-8933-c90d4d668fab",
+      "name": "Disambiguate & Aggregate",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        176,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-sources",
+              "leftValue": "={{ ($json.sourceUrls || []).length }}",
+              "rightValue": 0,
+              "operator": {
+                "type": "number",
+                "operation": "gt"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "bb25f74b-c9e5-4a13-a47f-d8020b8cf42d",
+      "name": "Has Sources?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        288,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nconst conf=item.identityConfidence??0.5;\nconst amb=item.ambiguous??false;\nif(conf<0.4)return[{json:{...item,_discarded:true,_reason:'low_confidence'}}];\nconst career=item.careerHistory||[];const careerStr=career.join(' ').toLowerCase();let seniority=50,years=5;if(/\\b(?:ceo|cfo|cto|coo|vp|vice president|director|head of|managing director)\\b/i.test(careerStr))seniority=Math.min(90,50+career.length*5);else if(/\\b(?:senior|lead|principal|staff)\\b/i.test(careerStr))seniority=65;const yrsMatch=careerStr.match(/(\\d+)\\s*years?|(\\d+)\\+\\s*years?/i);if(yrsMatch)years=Math.min(40,parseInt(yrsMatch[1]||yrsMatch[2]||'5',10));else if(career.length>=3)years=Math.min(30,5+career.length*2);const expert={name:item.fullName,industry:item._context?.industry||'Other',sub_industry:item.expertise?.[0]||'General',country:item._context?.location||'Unknown',region:item._context?.location||'Unknown',seniority_score:seniority,years_experience:years,predicted_rate:150,contacts:item.contactInfo||[],_meta:{identityConfidence:conf,ambiguous:amb,confidenceReasons:item.confidenceReasons||[],linkedInUrl:item.socialProfiles?.find(s=>s.type==='linkedin')?.url||null,sourceUrls:item.sourceUrls||[],careerHistory:item.careerHistory||[],publications:item.publications||[],skills:item.skills||[]}};\nreturn[{json:{...item,expert,_discarded:false}}];"
+      },
+      "id": "5532baa3-9c07-4da1-aac6-6b7d45c1d1c3",
+      "name": "Quality Control",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        400,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "keep",
+              "leftValue": "={{ $json._discarded }}",
+              "rightValue": false,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "229595dd-ff3b-46ca-89f2-d4c0f78b90b9",
+      "name": "Keep Result?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        512,
+        -48
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all();\nconst projectId = items[0]?.json?._context?.projectId || items[0]?.json?.projectId || '';\nconst experts = items.map(i => i.json.expert).filter(Boolean).map(e => ({\n  name: e.name,\n  industry: e.industry,\n  sub_industry: e.sub_industry,\n  country: e.country,\n  region: e.region,\n  seniority_score: e.seniority_score,\n  years_experience: e.years_experience,\n  predicted_rate: e.predicted_rate,\n  contacts: e.contacts || [],\n  source_verified: true,\n  linkedin_url: e._meta?.linkedInUrl || null,\n  career_history: e._meta?.careerHistory || [],\n  skills: e._meta?.skills || []\n}));\nconst payload = { projectId, experts, status: 'complete', complete: true };\nreturn [{ json: { payload, projectId } }];"
+      },
+      "id": "3b96e363-42c0-45ea-b7c6-6c1916f0e378",
+      "name": "Format Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        608,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item=$input.first().json;\nconst bodyString=JSON.stringify(item.payload);\nconst secret='PASTE_YOUR_SHARED_SECRET';\nlet sig='';\nif(secret&&secret!=='PASTE_YOUR_SHARED_SECRET'){const c=require('crypto');sig=c.createHmac('sha256',secret).update(bodyString).digest('hex');}\nreturn[{json:{bodyString,signature:sig,projectId:item.projectId}}];"
+      },
+      "id": "bb873855-32df-4a49-8cf0-3d5383b34d3c",
+      "name": "Sign Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -144
+      ],
+      "notesInFlow": true,
+      "notes": "Replace PASTE_YOUR_SHARED_SECRET with your Vercel SHARED_SECRET"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://exper-tone.vercel.app/api/webhooks/n8n-callback",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "X-Webhook-Signature",
+              "value": "={{ $json.signature }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ $json.bodyString }}",
+        "options": {
+          "timeout": 15000
+        }
+      },
+      "id": "44e1eb12-10c1-470b-9522-f98fed90c481",
+      "name": "POST Callback",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        832,
+        -144
+      ],
+      "notesInFlow": true,
+      "notes": "Edit URL if your app is elsewhere"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "success",
+              "type": "string"
+            },
+            {
+              "id": "projectId",
+              "name": "projectId",
+              "value": "={{ $json.projectId ?? $('Format Callback').first().json.projectId ?? $('Minimal Callback').first().json.projectId }}",
+              "type": "string"
+            },
+            {
+              "id": "expert",
+              "name": "expert",
+              "value": "={{ ($('Format Callback').first().json?.payload?.experts ?? $('Minimal Callback').first().json?.payload?.experts ?? [])[0] }}",
+              "type": "object"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c00d2fb4-dc3b-4637-9f80-a04fdaad4d1a",
+      "name": "Format Collect Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        944,
+        -144
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "skipped",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "Provide projectId and expertName for collect mode.",
+              "type": "string"
+            },
+            {
+              "id": "projectId",
+              "name": "projectId",
+              "value": "={{ $('Extract Input').first().json.projectId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "6a137993-42c4-408d-b227-9baca4c558b0",
+      "name": "Invalid Collect Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2048,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "no_public_sources",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "No scrapable public sources or all blocked by robots.txt.",
+              "type": "string"
+            },
+            {
+              "id": "projectId",
+              "name": "projectId",
+              "value": "={{ $('Extract Input').first().json.projectId }}",
+              "type": "string"
+            },
+            {
+              "id": "linkedInUrl",
+              "name": "linkedInUrl",
+              "value": "={{ $('Parse LinkedIn URL').first().json.linkedInUrl }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "a6994289-20d0-487e-b00a-3821c41854c8",
+      "name": "No Sources Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        400,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const ctx = $('Parse LinkedIn URL').first().json;\nconst projectId = ctx.projectId || '';\nconst expert = { name: ctx.expertName || '', industry: ctx.industry || 'Other', sub_industry: 'General', country: ctx.location || 'Unknown', region: ctx.location || 'Unknown', seniority_score: 50, years_experience: 5, predicted_rate: 150, contacts: [], source_verified: false, linkedin_url: ctx.linkedInUrl || null, career_history: [] };\nconst payload = { projectId, experts: [expert], status: 'complete', complete: true };\nreturn [{ json: { payload, projectId } }];"
+      },
+      "id": "50c8bc62-80ef-4aa5-9d37-2436225bcf60",
+      "name": "Minimal Callback",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        512,
+        208
+      ],
+      "notesInFlow": true,
+      "notes": "When no scrapable sources: still send expert from input"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "discarded",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "Result discarded (low identity confidence).",
+              "type": "string"
+            },
+            {
+              "id": "projectId",
+              "name": "projectId",
+              "value": "={{ $('Extract Input').first().json.projectId }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "51261c02-0fe1-415a-90d2-329d06c31e53",
+      "name": "Discarded Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        608,
+        64
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "has-project",
+              "leftValue": "={{ $json.projectId }}",
+              "rightValue": "",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "590ccdce-37f9-4230-986f-475a4595822d",
+      "name": "Has Project ID?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2256,
+        368
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://expertone.onrender.com/rank",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ project_id: $json.projectId }) }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "6dfc1f01-95d5-4d50-b2f2-c06e3af297f1",
+      "name": "ML Rank Experts",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -2048,
+        464
+      ],
+      "notesInFlow": true,
+      "notes": "Calls ML service when no expertName (rank mode)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "no_project",
+              "type": "string"
+            },
+            {
+              "id": "message",
+              "name": "message",
+              "value": "Provide projectId to rank experts.",
+              "type": "string"
+            },
+            {
+              "id": "ranked_experts",
+              "name": "ranked_experts",
+              "value": [],
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2afafe6f-553d-489e-be77-89ed023a7ae9",
+      "name": "No Project Fallback",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -2048,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "options": {}
+      },
+      "id": "d27616cb-feeb-4c1c-a495-f18c4a882c97",
+      "name": "Merge",
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3,
+      "position": [
+        -1824,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "status",
+              "name": "status",
+              "value": "={{ $json.ranked_experts ? 'success' : $json.status }}",
+              "type": "string"
+            },
+            {
+              "id": "project_id",
+              "name": "project_id",
+              "value": "={{ $json.project_id ?? $('Extract Input').first().json.projectId }}",
+              "type": "string"
+            },
+            {
+              "id": "ranked_experts",
+              "name": "ranked_experts",
+              "value": "={{ $json.ranked_experts ?? $json.rankedExperts ?? [] }}",
+              "type": "array"
+            },
+            {
+              "id": "count",
+              "name": "count",
+              "value": "={{ ($json.ranked_experts ?? $json.rankedExperts ?? []).length }}",
+              "type": "number"
+            },
+            {
+              "id": "timestamp",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "957f8464-a554-4f38-86b6-983ba8e0a984",
+      "name": "Format Rank Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1600,
+        464
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "4ef851ca-813f-4bd9-8f29-d10b9be39964",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1152,
+        256
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "name",
+              "value": "={{ $json.expert.name }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "industry",
+              "value": "={{ $json.expert.industry }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "sub_industry",
+              "value": "={{ $json.expert.sub_industry }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "country",
+              "value": "={{ $json.expert.country }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "region",
+              "value": "={{ $json.expert.region }}",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "seniority_score",
+              "value": "={{ $json.expert.seniority_score }}",
+              "type": "number"
+            },
+            {
+              "id": "id-7",
+              "name": "years_experience",
+              "value": "={{ $json.expert.years_experience }}",
+              "type": "number"
+            },
+            {
+              "id": "id-8",
+              "name": "predicted_rate",
+              "value": "={{ $json.expert.predicted_rate }}",
+              "type": "number"
+            },
+            {
+              "id": "id-9",
+              "name": "linkedin_url",
+              "value": "={{ $json.expert._meta.linkedInUrl }}",
+              "type": "string"
+            },
+            {
+              "id": "id-10",
+              "name": "career_history",
+              "value": "={{ JSON.stringify($json.expert._meta.careerHistory) }}",
+              "type": "array"
+            },
+            {
+              "id": "id-11",
+              "name": "skills",
+              "value": "={{ JSON.stringify($json.expert._meta.skills) }}",
+              "type": "array"
+            },
+            {
+              "id": "id-12",
+              "name": "source_urls",
+              "value": "={{ JSON.stringify($json.expert._meta.sourceUrls) }}",
+              "type": "array"
+            },
+            {
+              "id": "id-13",
+              "name": "identity_confidence",
+              "value": "={{ $json.expert._meta.identityConfidence }}",
+              "type": "number"
+            },
+            {
+              "id": "id-14",
+              "name": "project_id",
+              "value": "={{ $json._context.projectId }}",
+              "type": "string"
+            },
+            {
+              "id": "id-15",
+              "name": "created_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-16",
+              "name": "updated_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "bf604f8a-6202-4f17-8318-cf7054a9251b",
+      "name": "Prepare Expert for Storage",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        1440,
+        976
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "query_hash",
+              "value": "={{ $json.linkedInQuery || $json.publicQuery }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "query_text",
+              "value": "={{ $json.linkedInQuery || $json.publicQuery }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "results",
+              "value": "={{ JSON.stringify($json) }}",
+              "type": "object"
+            },
+            {
+              "id": "id-4",
+              "name": "cached_at",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "ttl_hours",
+              "value": 24,
+              "type": "number"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "dcfb1004-761c-4724-bfa0-f008ba94cde9",
+      "name": "Prepare Cache Entry",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -704,
+        1152
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.id }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "97c71b2a-2772-40ce-9486-97deba8ee443",
+      "name": "Cache Hit?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1152,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "event_type",
+              "value": "={{ $json._mode || 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "project_id",
+              "value": "={{ $json.projectId || $json.project_id }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "expert_name",
+              "value": "={{ $json.expertName || $json.expert_name || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "status",
+              "value": "={{ $json.status || 'processing' }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "execution_id",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            },
+            {
+              "id": "id-7",
+              "name": "workflow_id",
+              "value": "={{ $workflow.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "33b5ddec-570c-4184-9a31-d75b816b59fd",
+      "name": "Prepare Log Entry",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1824,
+        736
+      ]
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.linkedInQuery }}"
+            },
+            {
+              "name": "num",
+              "value": 8
+            }
+          ]
+        },
+        "options": {
+          "timeout": 8000
+        }
+      },
+      "id": "b170c82d-7183-4c3b-b1a6-6b92429802f8",
+      "name": "Google Search - LinkedIn URL (Retry)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -928,
+        960
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "url": "https://www.googleapis.com/customsearch/v1",
+        "sendQuery": true,
+        "queryParameters": {
+          "parameters": [
+            {
+              "name": "key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "cx",
+              "value": "={{ $env.GOOGLE_CSE_ID }}"
+            },
+            {
+              "name": "q",
+              "value": "={{ $json.publicQuery }}"
+            },
+            {
+              "name": "num",
+              "value": 10
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "c04e1e44-8570-42a1-a9f5-ac6f264bf1b8",
+      "name": "Google Search - Public Sources (Retry)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -928,
+        1248
+      ],
+      "onError": "continueErrorOutput"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "error_type",
+              "value": "search_api_error",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "error_message",
+              "value": "={{ $json.error.message }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "query",
+              "value": "={{ $('Build Search Queries').item.json.linkedInQuery || $('Build Public Queries').item.json.publicQuery }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "01f4bdbb-c663-4639-a526-6fb08c01801c",
+      "name": "Handle Search Error",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -704,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {};\nconst errors = [];\n\nif (!body.projectId && !body.project_id) errors.push('projectId is required');\n\n// Determine mode: collect if we have expertName, experts array, OR brief\nconst hasExpertName = body.expertName || body.expert_name;\nconst hasExpertsArray = body.experts && Array.isArray(body.experts) && body.experts.length > 0;\nconst hasBrief = body.brief && typeof body.brief === 'string' && body.brief.trim().length > 0;\nconst mode = (hasExpertName || hasExpertsArray || hasBrief) ? 'collect' : 'rank';\n\n// For collect mode, require at least one of: expertName, experts array, or brief\nif (mode === 'collect' && !hasExpertName && !hasExpertsArray && !hasBrief) {\n  errors.push('expertName, experts array, or brief required for collect mode');\n}\n\nif (body.query && typeof body.query !== 'string') errors.push('query must be a string');\nif (body.filterCriteria && typeof body.filterCriteria !== 'object') errors.push('filterCriteria must be an object');\n\nconst valid = errors.length === 0;\n\nreturn [{ json: { ...body, _valid: valid, _errors: errors, _mode: mode, _timestamp: new Date().toISOString() } }];"
+      },
+      "id": "89700dc6-c243-413e-9dde-88b8cca81c01",
+      "name": "Validate Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -704,
+        2208
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json._valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "e997f661-8dd0-4d5c-a4b0-be3379f412dc",
+      "name": "Input Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -480,
+        2208
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "status",
+              "value": "validation_error",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "message",
+              "value": "={{ $json._errors.join(', ') }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "errors",
+              "value": "={{ $json._errors }}",
+              "type": "array"
+            },
+            {
+              "id": "id-4",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "444202b0-3569-4ec0-9b83-9969d1d86da0",
+      "name": "Validation Error Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -256,
+        2208
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $input.all(); const seen = new Set(); const unique = []; for (const item of items) { const name = (item.json.expertName || item.json.name || '').toLowerCase().trim(); const key = name; if (!seen.has(key) && name) { seen.add(key); unique.push(item); } } return unique;"
+      },
+      "id": "ec61837e-5872-427c-837c-a0f55ab6fc64",
+      "name": "Deduplicate Experts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        1472
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const RATE_LIMIT_PER_MINUTE = 60; const now = Date.now(); const key = 'google_search_rate_limit'; const state = $execution.customData.get(key) || { count: 0, windowStart: now }; const windowElapsed = now - state.windowStart; if (windowElapsed > 60000) { state.count = 0; state.windowStart = now; } state.count++; $execution.customData.set(key, state); const shouldWait = state.count > RATE_LIMIT_PER_MINUTE; const waitMs = shouldWait ? Math.max(0, 60000 - windowElapsed) : 0; return [{ json: { ...($input.first().json), _shouldWait: shouldWait, _waitMs: waitMs, _currentCount: state.count } }];"
+      },
+      "id": "6fe774ae-f958-4146-97ec-c9a7aba701ac",
+      "name": "Rate Limit Check",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "amount": "={{ $json._waitMs }}"
+      },
+      "id": "2d968840-0881-4697-8602-d58b2293faa6",
+      "name": "Rate Limit Wait",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        -1600,
+        960
+      ],
+      "webhookId": "567cd2cc-4ff1-4ddb-aae8-b355d2d80d17"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "metric_type",
+              "value": "expert_collection",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "project_id",
+              "value": "={{ $json.projectId || $json._context?.projectId }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "expert_name",
+              "value": "={{ $json.expert?.name || $json.expertName }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "identity_confidence",
+              "value": "={{ $json.expert?._meta?.identityConfidence || 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "id-5",
+              "name": "sources_found",
+              "value": "={{ ($json.expert?._meta?.sourceUrls || []).length }}",
+              "type": "number"
+            },
+            {
+              "id": "id-6",
+              "name": "linkedin_found",
+              "value": "={{ $json.expert?._meta?.linkedInUrl ? 1 : 0 }}",
+              "type": "number"
+            },
+            {
+              "id": "id-7",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-8",
+              "name": "execution_id",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "df16f3ae-82ba-400e-8032-078de328fe97",
+      "name": "Prepare Metrics",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1600,
+        1696
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $input.first().json.headers || {}; const body = $input.first().json.body || {}; const receivedSig = headers['x-webhook-signature'] || ''; const secret = $env.WEBHOOK_SECRET || ''; let valid = true; if (secret && receivedSig) { const crypto = require('crypto'); const bodyString = JSON.stringify(body); const expectedSig = crypto.createHmac('sha256', secret).update(bodyString).digest('hex'); valid = receivedSig === expectedSig; } else if (secret && !receivedSig) { valid = false; } return [{ json: { ...($input.first().json), _signatureValid: valid } }];"
+      },
+      "id": "9fd7e9d0-f1ee-4ae7-bf99-fd5cc61e0e51",
+      "name": "Verify Webhook Signature",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json._signatureValid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "52a84b87-3af6-4d92-af4c-908d07a86dbe",
+      "name": "Signature Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -1600,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "status",
+              "value": "unauthorized",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "message",
+              "value": "Invalid webhook signature",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "e2a4e7e5-0666-4030-9f3c-28a51277de8e",
+      "name": "Unauthorized Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1376,
+        1920
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const body = $input.first().json.body || {}; const timestamp = body.timestamp || body._timestamp; const MAX_AGE_SECONDS = 300; let valid = true; if (timestamp) { const now = Date.now(); const reqTime = new Date(timestamp).getTime(); const age = (now - reqTime) / 1000; valid = age >= 0 && age <= MAX_AGE_SECONDS; } return [{ json: { ...($input.first().json), _timestampValid: valid, _requestAge: timestamp ? Math.floor((Date.now() - new Date(timestamp).getTime()) / 1000) : null } }];"
+      },
+      "id": "ea6b26db-38a5-40b9-97a8-788b6598edb9",
+      "name": "Check Timestamp",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1376,
+        2112
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const startTime = Date.now(); const item = $input.first().json; const name = (item.fullName || '').toLowerCase(); const records = item.sourceUrls || []; const companies = [...new Set(records.map(r => item.currentCompany).filter(Boolean))]; const roles = [...new Set([item.currentRole].filter(Boolean))]; let confidence = item.identityConfidence || 0.5; const reasons = [...(item.confidenceReasons || [])]; if (companies.length === 1 && item._context?.company && companies[0].toLowerCase().includes(item._context.company.toLowerCase())) { confidence += 0.1; reasons.push('company_exact_match'); } if (roles.length === 1 && item._context?.title && roles[0].toLowerCase().includes(item._context.title.toLowerCase())) { confidence += 0.1; reasons.push('title_exact_match'); } const linkedInUrl = item.socialProfiles?.find(s => s.type === 'linkedin')?.url; if (linkedInUrl && linkedInUrl.toLowerCase().includes(name.split(' ')[0])) { confidence += 0.15; reasons.push('linkedin_name_match'); } if (item.publications && item.publications.length >= 3) { confidence += 0.1; reasons.push('multiple_publications'); } if (item.notableAchievements && item.notableAchievements.length >= 2) { confidence += 0.1; reasons.push('notable_achievements'); } confidence = Math.min(1, confidence); const ambiguous = companies.length > 2 || (companies.length > 1 && !item._context?.company); return [{ json: { ...item, identityConfidence: confidence, confidenceReasons: reasons, ambiguous, _processingStartTime: startTime } }];"
+      },
+      "id": "e4fa8320-8688-4b99-b241-711874349d57",
+      "name": "Enhanced Disambiguation AI",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1824,
+        2432
+      ]
+    },
+    {
+      "parameters": {
+        "aggregate": "aggregateAllItemData",
+        "options": {}
+      },
+      "id": "24729185-7663-485f-acf2-09e8097ccded",
+      "name": "Aggregate for Batch Processing",
+      "type": "n8n-nodes-base.aggregate",
+      "typeVersion": 1,
+      "position": [
+        -1824,
+        288
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const headers = $input.first().json.headers || {}; const clientIp = headers['x-forwarded-for']?.split(',')[0]?.trim() || headers['x-real-ip'] || 'unknown'; const whitelist = ($env.IP_WHITELIST || '').split(',').map(ip => ip.trim()).filter(Boolean); let allowed = true; if (whitelist.length > 0) { allowed = whitelist.includes(clientIp) || whitelist.includes('*'); } return [{ json: { ...($input.first().json), _clientIp: clientIp, _ipAllowed: allowed } }];"
+      },
+      "id": "cc36f4a0-d2f7-4f3b-8df7-6c23e4d4bb1d",
+      "name": "Check IP Whitelist",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        2112
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json._ipAllowed }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "equals"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "d376ec16-0641-47e1-b61e-5b366ff9b8da",
+      "name": "IP Allowed?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2.3,
+      "position": [
+        -928,
+        2112
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "status",
+              "value": "forbidden",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "message",
+              "value": "IP address not whitelisted",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "client_ip",
+              "value": "={{ $json._clientIp }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "104b96fb-1b5a-4db6-9c38-89338f5dc65a",
+      "name": "IP Blocked Response",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -704,
+        2016
+      ]
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "experts",
+        "options": {}
+      },
+      "id": "5cb4e0f4-6dde-4315-8c54-9928a0d6c759",
+      "name": "Split Experts for Batch",
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -1824,
+        512
+      ]
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "id-1",
+              "name": "error_type",
+              "value": "={{ $json.error_type || 'unknown' }}",
+              "type": "string"
+            },
+            {
+              "id": "id-2",
+              "name": "error_message",
+              "value": "={{ $json.error_message || $json.message }}",
+              "type": "string"
+            },
+            {
+              "id": "id-3",
+              "name": "project_id",
+              "value": "={{ $json.projectId || $json.project_id || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "id-4",
+              "name": "expert_name",
+              "value": "={{ $json.expertName || $json.expert_name || '' }}",
+              "type": "string"
+            },
+            {
+              "id": "id-5",
+              "name": "timestamp",
+              "value": "={{ $now.toISO() }}",
+              "type": "string"
+            },
+            {
+              "id": "id-6",
+              "name": "execution_id",
+              "value": "={{ $execution.id }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "c78b7d52-8400-4f4a-9a0f-86c566ad3d06",
+      "name": "Prepare Error Log",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -480,
+        960
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const item = $input.first().json; const startTime = item._processingStartTime || Date.now(); const endTime = Date.now(); const duration = endTime - startTime; const metrics = { project_id: item._context?.projectId || item.projectId, expert_name: item.expert?.name || item.expertName, processing_duration_ms: duration, sources_scraped: (item.expert?._meta?.sourceUrls || []).length, identity_confidence: item.expert?._meta?.identityConfidence || 0, linkedin_found: item.expert?._meta?.linkedInUrl ? 1 : 0, cache_hit: item._cacheHit ? 1 : 0, timestamp: new Date().toISOString(), execution_id: $execution.id }; return [{ json: { ...item, _metrics: metrics } }];"
+      },
+      "id": "ad63eec3-5957-4ec2-b9de-c2942a0c3a1d",
+      "name": "Calculate Performance Metrics",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1152,
+        1696
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM search_cache WHERE query_hash = $1 AND cached_at > NOW() - INTERVAL '24 hours' LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ $json.linkedInQuery || $json.publicQuery }}"
+        }
+      },
+      "id": "4401bdbb-60cc-4ef4-b9d9-93c27d90d4f0",
+      "name": "Search Cache",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1376,
+        960
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "lPavphonrCwAdkmi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "search_cache"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "query_hash": "={{ $json.query_hash }}",
+            "query_text": "={{ $json.query_text }}",
+            "results": "={{ JSON.stringify($json.results) }}",
+            "cached_at": "={{ $json.cached_at }}",
+            "ttl_hours": "={{ $json.ttl_hours }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "fb77cbd4-eeb8-4c75-a454-caa4836b9a29",
+      "name": "Store Search Cache",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -480,
+        1152
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "lPavphonrCwAdkmi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "SELECT * FROM experts WHERE name ILIKE $1 AND project_id = $2 LIMIT 1",
+        "options": {
+          "queryReplacement": "={{ $json.expertName }},={{ $json.projectId }}"
+        }
+      },
+      "id": "10281e7b-ad36-4c66-a258-2699b8e89dab",
+      "name": "Check Existing Expert",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1600,
+        1472
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "lPavphonrCwAdkmi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "experts"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "name": "={{ $json.name }}",
+            "industry": "={{ $json.industry }}",
+            "sub_industry": "={{ $json.sub_industry }}",
+            "country": "={{ $json.country }}",
+            "region": "={{ $json.region }}",
+            "seniority_score": "={{ $json.seniority_score }}",
+            "years_experience": "={{ $json.years_experience }}",
+            "predicted_rate": "={{ $json.predicted_rate }}",
+            "linkedin_url": "={{ $json.linkedin_url }}",
+            "career_history": "={{ $json.career_history }}",
+            "skills": "={{ $json.skills }}",
+            "source_urls": "={{ $json.source_urls }}",
+            "identity_confidence": "={{ $json.identity_confidence }}",
+            "project_id": "={{ $json.project_id }}",
+            "created_at": "={{ $json.created_at }}",
+            "updated_at": "={{ $json.updated_at }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "4dd728bc-f8e7-4995-a2c4-b84482444270",
+      "name": "Store Expert Permanently",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1824,
+        1696
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "lPavphonrCwAdkmi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "metrics"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "metric_type": "={{ $json.metric_type }}",
+            "project_id": "={{ $json.project_id }}",
+            "expert_name": "={{ $json.expert_name }}",
+            "identity_confidence": "={{ $json.identity_confidence }}",
+            "sources_found": "={{ $json.sources_found }}",
+            "linkedin_found": "={{ $json.linkedin_found }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "execution_id": "={{ $json.execution_id }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "c6021e5c-2497-4662-aaed-5fcffbd44d81",
+      "name": "Track Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1376,
+        1696
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "lPavphonrCwAdkmi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "performance_metrics"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "project_id": "={{ $json._metrics.project_id }}",
+            "expert_name": "={{ $json._metrics.expert_name }}",
+            "processing_duration_ms": "={{ $json._metrics.processing_duration_ms }}",
+            "sources_scraped": "={{ $json._metrics.sources_scraped }}",
+            "identity_confidence": "={{ $json._metrics.identity_confidence }}",
+            "linkedin_found": "={{ $json._metrics.linkedin_found }}",
+            "cache_hit": "={{ $json._metrics.cache_hit }}",
+            "timestamp": "={{ $json._metrics.timestamp }}",
+            "execution_id": "={{ $json._metrics.execution_id }}"
+          },
+          "matchingColumns": [],
+          "schema": []
+        },
+        "options": {}
+      },
+      "id": "e3162c5d-7a3e-4c13-9dfa-5655a8a65c58",
+      "name": "Store Performance Metrics",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -928,
+        1696
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "lPavphonrCwAdkmi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "error_log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "error_type": "={{ $json.error_type }}",
+            "error_message": "={{ $json.error_message }}",
+            "project_id": "={{ $json.project_id }}",
+            "expert_name": "={{ $json.expert_name }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "execution_id": "={{ $json.execution_id }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "f33677cf-93ca-49d5-bed0-0acb9de3186e",
+      "name": "Store Error Log",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -256,
+        960
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "lPavphonrCwAdkmi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "schema": {
+          "__rl": true,
+          "mode": "list",
+          "value": "public"
+        },
+        "table": {
+          "__rl": true,
+          "mode": "name",
+          "value": "activity_log"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "event_type": "={{ $json.event_type }}",
+            "project_id": "={{ $json.project_id }}",
+            "expert_name": "={{ $json.expert_name }}",
+            "status": "={{ $json.status }}",
+            "timestamp": "={{ $json.timestamp }}",
+            "execution_id": "={{ $json.execution_id }}",
+            "workflow_id": "={{ $json.workflow_id }}"
+          }
+        },
+        "options": {}
+      },
+      "id": "034734cc-cb71-4f05-9f98-2454899a8769",
+      "name": "Log Activity",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 2.6,
+      "position": [
+        -1600,
+        736
+      ],
+      "credentials": {
+        "postgres": {
+          "id": "lPavphonrCwAdkmi",
+          "name": "Postgres account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "id-1",
+              "leftValue": "={{ $json.body.brief }}",
+              "operator": {
+                "type": "string",
+                "operation": "notEmpty"
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "19c84080-4e3c-4278-add7-1c21394e24bb",
+      "name": "Has Brief?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -2480,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "model": {
+          "__rl": true,
+          "mode": "id",
+          "value": "meta-llama/llama-3.1-8b-instruct:free"
+        },
+        "options": {
+          "baseURL": "https://openrouter.ai/api/v1",
+          "temperature": 0.2
+        }
+      },
+      "id": "ae16b886-de31-455b-904d-bde52f67903c",
+      "name": "OpenRouter Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -2256,
+        528
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "C2cDHm1Pf7Ttt6gF",
+          "name": "OpenAi account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "={{ $json.body.brief }}",
+        "hasOutputParser": true,
+        "options": {
+          "systemMessage": "You are an expert at analyzing project briefs and identifying the ideal expert profiles needed. Extract all mentioned or implied expert profiles from the brief, including their name (if mentioned), title/role, company (if mentioned), location/region, and industry/expertise area."
+        }
+      },
+      "id": "91e58f81-2a81-4ca4-b3ee-53ddb9d464f9",
+      "name": "Parse Brief for Experts",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.9,
+      "position": [
+        -2256,
+        304
+      ]
+    },
+    {
+      "parameters": {
+        "schemaType": "manual",
+        "inputSchema": "{\n  \"type\": \"object\",\n  \"properties\": {\n    \"experts\": {\n      \"type\": \"array\",\n      \"description\": \"List of expert profiles extracted from the brief\",\n      \"items\": {\n        \"type\": \"object\",\n        \"properties\": {\n          \"name\": {\n            \"type\": \"string\",\n            \"description\": \"Expert's full name if mentioned, otherwise empty string\"\n          },\n          \"title\": {\n            \"type\": \"string\",\n            \"description\": \"Job title or role (e.g., 'Engineering Director', 'Chief Procurement Officer')\"\n          },\n          \"company\": {\n            \"type\": \"string\",\n            \"description\": \"Company name if mentioned, otherwise empty string\"\n          },\n          \"location\": {\n            \"type\": \"string\",\n            \"description\": \"Geographic location or region (e.g., 'Northern Europe', 'Virginia')\"\n          },\n          \"industry\": {\n            \"type\": \"string\",\n            \"description\": \"Industry or expertise area (e.g., 'Data Center Cooling', 'Cloud Infrastructure')\"\n          }\n        },\n        \"required\": [\"title\", \"industry\"]\n      }\n    }\n  },\n  \"required\": [\"experts\"]\n}"
+      },
+      "id": "59d7059f-b338-4ea7-a394-d86a5a7e452e",
+      "name": "Expert Profiles Schema",
+      "type": "@n8n/n8n-nodes-langchain.outputParserStructured",
+      "typeVersion": 1.2,
+      "position": [
+        -2128,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const input = $input.first().json;\nconst body = input.body || {};\nconst parsedExperts = input.output?.experts || [];\n\n// Merge parsed experts into the body format that Extract Input expects\nconst formattedBody = {\n  ...body,\n  experts: parsedExperts.map(e => ({\n    name: e.name || '',\n    title: e.title || '',\n    company: e.company || '',\n    location: e.location || '',\n    industry: e.industry || 'Other'\n  }))\n};\n\nreturn [{ json: { body: formattedBody } }];"
+      },
+      "id": "304a4bf5-909b-445a-90a0-84f88b140289",
+      "name": "Format Parsed Experts",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1904,
+        304
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Verify Webhook Signature",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Input": {
+      "main": [
+        [
+          {
+            "node": "Collect Mode?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Collect Mode?": {
+      "main": [
+        [
+          {
+            "node": "Valid Collect Input?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Has Project ID?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Valid Collect Input?": {
+      "main": [
+        [
+          {
+            "node": "Build Search Queries",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Invalid Collect Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Search Queries": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Check",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse LinkedIn URL": {
+      "main": [
+        [
+          {
+            "node": "Build Public Queries",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Public Queries": {
+      "main": [
+        [
+          {
+            "node": "Google Search - Public Sources (Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Merge Google Results": {
+      "main": [
+        [
+          {
+            "node": "Fetch robots.txt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch robots.txt": {
+      "main": [
+        [
+          {
+            "node": "Merge Robots",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Robots": {
+      "main": [
+        [
+          {
+            "node": "Check robots.txt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check robots.txt": {
+      "main": [
+        [
+          {
+            "node": "Scraping Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scraping Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Scrape Page",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Merge Context",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Scrape Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Scrape Page": {
+      "main": [
+        [
+          {
+            "node": "Merge Context",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Context": {
+      "main": [
+        [
+          {
+            "node": "Extract Data",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Data": {
+      "main": [
+        [
+          {
+            "node": "Merge Scraped",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Scrape Fallback": {
+      "main": [
+        [
+          {
+            "node": "Merge Scraped",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge Scraped": {
+      "main": [
+        [
+          {
+            "node": "Disambiguate & Aggregate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Disambiguate & Aggregate": {
+      "main": [
+        [
+          {
+            "node": "Deduplicate Experts",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Enhanced Disambiguation AI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Sources?": {
+      "main": [
+        [
+          {
+            "node": "Quality Control",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Sources Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Quality Control": {
+      "main": [
+        [
+          {
+            "node": "Keep Result?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare Expert for Storage",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Keep Result?": {
+      "main": [
+        [
+          {
+            "node": "Format Callback",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Discarded Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Callback": {
+      "main": [
+        [
+          {
+            "node": "Sign Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sign Payload": {
+      "main": [
+        [
+          {
+            "node": "POST Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "POST Callback": {
+      "main": [
+        [
+          {
+            "node": "Format Collect Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Collect Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Invalid Collect Fallback": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Sources Fallback": {
+      "main": [
+        [
+          {
+            "node": "Minimal Callback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Minimal Callback": {
+      "main": [
+        [
+          {
+            "node": "Sign Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Discarded Fallback": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Project ID?": {
+      "main": [
+        [
+          {
+            "node": "ML Rank Experts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "No Project Fallback",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "ML Rank Experts": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "No Project Fallback": {
+      "main": [
+        [
+          {
+            "node": "Merge",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    },
+    "Merge": {
+      "main": [
+        [
+          {
+            "node": "Format Rank Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Rank Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Expert for Storage": {
+      "main": [
+        [
+          {
+            "node": "Store Expert Permanently",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Webhook Signature": {
+      "main": [
+        [
+          {
+            "node": "Signature Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Signature Valid?": {
+      "main": [
+        [
+          {
+            "node": "Check Timestamp",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Unauthorized Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Timestamp": {
+      "main": [
+        [
+          {
+            "node": "Check IP Whitelist",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Input": {
+      "main": [
+        [
+          {
+            "node": "Input Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Input Valid?": {
+      "main": [
+        [
+          {
+            "node": "Has Brief?",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Validation Error Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validation Error Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Unauthorized Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Check": {
+      "main": [
+        [
+          {
+            "node": "Rate Limit Wait",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Rate Limit Wait": {
+      "main": [
+        [
+          {
+            "node": "Search Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Cache Hit?": {
+      "main": [
+        [
+          {
+            "node": "Parse LinkedIn URL",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Google Search - LinkedIn URL (Retry)",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Search - LinkedIn URL (Retry)": {
+      "main": [
+        [
+          {
+            "node": "Prepare Cache Entry",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Search Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Cache Entry": {
+      "main": [
+        [
+          {
+            "node": "Store Search Cache",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Handle Search Error": {
+      "main": [
+        [
+          {
+            "node": "Prepare Error Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Search - Public Sources (Retry)": {
+      "main": [
+        [
+          {
+            "node": "Merge Google Results",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Handle Search Error",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Deduplicate Experts": {
+      "main": [
+        [
+          {
+            "node": "Check Existing Expert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Metrics": {
+      "main": [
+        [
+          {
+            "node": "Track Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Log Entry": {
+      "main": [
+        [
+          {
+            "node": "Log Activity",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Enhanced Disambiguation AI": {
+      "main": [
+        [
+          {
+            "node": "Has Sources?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check IP Whitelist": {
+      "main": [
+        [
+          {
+            "node": "IP Allowed?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IP Allowed?": {
+      "main": [
+        [
+          {
+            "node": "Validate Input",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "IP Blocked Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "IP Blocked Response": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Error Log": {
+      "main": [
+        [
+          {
+            "node": "Store Error Log",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Calculate Performance Metrics": {
+      "main": [
+        [
+          {
+            "node": "Store Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Search Cache": {
+      "main": [
+        [
+          {
+            "node": "Cache Hit?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Search Cache": {
+      "main": [
+        [
+          {
+            "node": "Parse LinkedIn URL",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Existing Expert": {
+      "main": [
+        [
+          {
+            "node": "Has Sources?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Expert Permanently": {
+      "main": [
+        [
+          {
+            "node": "Prepare Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Track Metrics": {
+      "main": [
+        [
+          {
+            "node": "Calculate Performance Metrics",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Has Brief?": {
+      "main": [
+        [
+          {
+            "node": "Parse Brief for Experts",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Extract Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Parse Brief for Experts": {
+      "main": [
+        [
+          {
+            "node": "Format Parsed Experts",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Parsed Experts": {
+      "main": [
+        [
+          {
+            "node": "Extract Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenRouter Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Parse Brief for Experts",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expert Profiles Schema": {
+      "ai_outputParser": [
+        [
+          {
+            "node": "Parse Brief for Experts",
+            "type": "ai_outputParser",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false
+  },
+  "versionId": "960df1c7-3c87-4662-ba47-0ee1dab66b49",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "d6aaa22b27141860784c52db70c9b83046a7cabc764f22515727bc192bf48592"
+  },
+  "id": "efoSvM3JIeVT3fpF",
+  "tags": []
+}

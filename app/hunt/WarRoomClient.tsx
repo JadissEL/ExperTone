@@ -4,6 +4,7 @@ import React, { useCallback, useState } from 'react';
 import { motion } from 'framer-motion';
 import { Search, ChevronLeft, ChevronRight, Plus, Zap, Loader2, AlertTriangle } from 'lucide-react';
 import { SPRING, STAGGER } from '@/lib/vanguard/motion';
+import { detectInputType } from '@/lib/brief-input-type';
 import { ClickableName } from '@/components/expert/ClickableName';
 import { DisambiguationModal } from '@/components/expert/DisambiguationModal';
 import { WarRoomExpertProfileSheet } from '@/components/expert/WarRoomExpertProfileSheet';
@@ -88,16 +89,18 @@ export function WarRoomClient() {
   } | null>(null);
   const pageSize = 50;
 
-  const runSearch = useCallback(() => {
-    if (!query.trim()) return;
-    setLoading(true);
-    setSearchError(null);
-    fetch('/api/hunter/search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      credentials: 'include',
-      body: JSON.stringify({ query: query.trim(), page: 1, pageSize, nameFilter: nameFilter.trim() || undefined }),
-    })
+  const runSearch = useCallback(
+    (overrideQuery?: string) => {
+      const q = (overrideQuery ?? query).trim();
+      if (!q) return;
+      setLoading(true);
+      setSearchError(null);
+      fetch('/api/hunter/search', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ query: q, page: 1, pageSize, nameFilter: nameFilter.trim() || undefined }),
+      })
       .then(async (r) => {
         const d = await r.json();
         if (!r.ok) {
@@ -119,7 +122,9 @@ export function WarRoomClient() {
         setSearchError(err instanceof Error ? err.message : 'Failed to fetch results');
       })
       .finally(() => setLoading(false));
-  }, [query, nameFilter]);
+    },
+    [query, nameFilter]
+  );
 
   const fetchPage = useCallback(
     (p: number) => {
@@ -174,14 +179,75 @@ export function WarRoomClient() {
     };
   }, []);
 
+  const ingestBrief = useCallback(
+    (rawBrief: string) => {
+      setTriggerLoading(true);
+      setTriggerMessage(null);
+      fetch('/api/brief/ingest', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ rawBrief: rawBrief.trim(), projectId: selectedProjectId || undefined }),
+      })
+        .then(async (r) => {
+          const d = await r.json().catch(() => ({}));
+          return { ok: r.ok, ...d };
+        })
+        .then((d) => {
+          if (d.ok || d.ingested) {
+            if (d.projectId) {
+              setSelectedProjectId(d.projectId);
+              fetch('/api/projects', { credentials: 'include' })
+                .then((r) => r.json())
+                .then((pj) => {
+                  const list = pj.projects ?? [];
+                  setProjects(list);
+                })
+                .catch(() => {});
+            }
+            setTriggerMessage({
+              type: 'success',
+              text: d.created ? 'Brief ingested. Project created. n8n agents running.' : 'Brief ingested. Hunter triggered.',
+            });
+            runSearch(rawBrief);
+          } else {
+            setTriggerMessage({ type: 'error', text: d.error ?? 'Ingest failed' });
+          }
+          setTimeout(() => setTriggerMessage(null), 8000);
+        })
+        .catch((err) => {
+          setTriggerMessage({ type: 'error', text: err instanceof Error ? err.message : 'Request failed' });
+          setTimeout(() => setTriggerMessage(null), 5000);
+        })
+        .finally(() => setTriggerLoading(false));
+    },
+    [selectedProjectId, runSearch]
+  );
+
+  const handlePaste = useCallback(
+    (e: React.ClipboardEvent<HTMLInputElement>) => {
+      const text = e.clipboardData.getData('text');
+      if (text && detectInputType(text) === 'brief') {
+        setQuery(text);
+        ingestBrief(text);
+      }
+    },
+    [ingestBrief]
+  );
+
   const handleTrigger = () => {
+    const q = query.trim();
+    if (detectInputType(q) === 'brief') {
+      ingestBrief(q);
+      return;
+    }
     setTriggerLoading(true);
     setTriggerMessage(null);
     fetch('/api/hunter/trigger', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       credentials: 'include',
-      body: JSON.stringify({ query: query.trim(), projectId: selectedProjectId || undefined, projectTitle: query.slice(0, 80) }),
+      body: JSON.stringify({ query: q, projectId: selectedProjectId || undefined, projectTitle: q.slice(0, 80) }),
     })
       .then(async (r) => {
         const d = await r.json().catch(() => ({}));
@@ -244,10 +310,11 @@ export function WarRoomClient() {
           <Search className="w-5 h-5 text-slate-400 shrink-0" />
           <input
             type="text"
-            placeholder="Client brief (e.g. supply chain VP, 15+ years)"
+            placeholder="Client brief (e.g. supply chain VP, 15+ years) — paste to auto-ingest"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && runSearch()}
+            onPaste={handlePaste}
             className="flex-1 min-w-0 bg-transparent text-sm text-slate-200 placeholder-slate-500 focus:outline-none"
           />
           <input

@@ -1,0 +1,39 @@
+---
+description: n8n workflows are immutable; adapt the system around them
+globs: **/*
+alwaysApply: true
+---
+
+# n8n Workflows: Immutable (Non-Negotiable)
+
+**Never edit, regenerate, restructure, or modify any n8n workflow file.**
+
+## Constraint
+
+- Do NOT generate or update JSON workflow files
+- Do NOT suggest changes to n8n nodes, triggers, or logic
+- Do NOT refactor, add, or remove workflow nodes
+- The user does not want to repeatedly upload workflows or pay for push functionality
+
+## Architecture
+
+- **n8n** = automation executor (receives input, runs steps, returns output)
+- **Main project** = intelligence + orchestration layer
+
+All intelligence evolution must occur in the main system.
+
+## When a change seems to require n8n
+
+| Apparent need | External solution |
+|---------------|-------------------|
+| New input field | Add to payload; n8n passes through body |
+| Different validation | Validate in app before calling n8n |
+| New AI model | Pre-process in app; send parsed data so n8n skips parsing |
+| Schema mismatch | Add adapter layer, views, or sync in main project |
+
+## Adapt the system around n8n
+
+- Payload adapters (normalize outgoing requests)
+- Callback handlers (process n8n output)
+- Database views or sync jobs (align schemas)
+- Middleware (routing, validation)

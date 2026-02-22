@@ -42,6 +42,7 @@ export async function POST(req: NextRequest) {
     projectTitle: projectTitle ?? undefined,
     filterCriteria: filterCriteria ?? {},
     query: query?.trim() ?? '',
+    brief: query && query.length > 150 ? query.trim() : undefined,
   };
 
   const result = await triggerExpertHunt(payload);

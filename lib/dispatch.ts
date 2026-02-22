@@ -8,7 +8,7 @@
 import { prisma } from '@/lib/prisma';
 import { getOrCreateCurrentUser } from '@/lib/auth';
 import { researchFilterSchema, type ResearchFilterFormValues } from '@/lib/research-filter-schema';
-import { EXPERT_HUNTER_WEBHOOK_URL } from '@/app/lib/n8n-bridge';
+import { EXPERT_HUNTER_WEBHOOK_URL, adaptHuntPayload, signPayload } from '@/app/lib/n8n-bridge';
 import { getEmbedding, isCircuitOpen } from '@/lib/ml-client';
 
 export type TriggerResearchProjectResult =
@@ -46,13 +46,15 @@ export async function triggerResearchProject(
     },
   });
 
+  const query = (filterCriteria as ResearchFilterFormValues).brief ||
+    (filterCriteria as ResearchFilterFormValues).query ||
+    '';
   const payload = {
     projectId: project.id,
     projectTitle: project.title,
     filterCriteria: filterCriteria as Record<string, unknown>,
-    query: (filterCriteria as ResearchFilterFormValues).brief ||
-      (filterCriteria as ResearchFilterFormValues).query ||
-      '',
+    query,
+    brief: (filterCriteria as ResearchFilterFormValues).brief || undefined,
   };
 
   let scrapingStarted = false;
@@ -60,10 +62,15 @@ export async function triggerResearchProject(
 
   const webhookPromise = (async () => {
     try {
+      const adapted = adaptHuntPayload(payload);
+      const bodyString = JSON.stringify(adapted);
+      const signature = signPayload(bodyString);
+      const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+      if (signature) headers['X-Webhook-Signature'] = signature;
       const res = await fetch(EXPERT_HUNTER_WEBHOOK_URL, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
+        headers,
+        body: bodyString,
       });
       if (res.ok) {
         scrapingStarted = true;

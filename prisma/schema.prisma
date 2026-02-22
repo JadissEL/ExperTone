@@ -413,3 +413,157 @@ model PendingIntervention {
   @@index([status])
   @@map("pending_interventions")
 }
+
+// n8n workflow support: cache Google search results
+model SearchCache {
+  id        String   @id @default(cuid())
+  queryKey  String   @map("query_key")   // hash or normalized query
+  query     String?  @map("query")       // original query
+  results   Json     @map("results")     // search results payload
+  source    String?  @map("source")      // e.g. "google", "linkedin"
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime? @map("expires_at")
+  // n8n alignment columns (Expert Hunter workflow)
+  queryHash String?  @map("query_hash")
+  queryText String? @map("query_text")
+  cachedAt  DateTime? @map("cached_at")
+  ttlHours  Int?     @map("ttl_hours")
+
+  @@unique([queryKey])
+  @@index([queryKey])
+  @@index([queryHash])
+  @@index([expiresAt])
+  @@map("search_cache")
+}
+
+// n8n workflow support: cache robots.txt per domain
+model RobotsCache {
+  id        String   @id @default(cuid())
+  domain    String   @map("domain")
+  robotsTxt String   @map("robots_txt")  @db.Text
+  createdAt DateTime @default(now()) @map("created_at")
+  expiresAt DateTime? @map("expires_at")
+
+  @@unique([domain])
+  @@index([domain])
+  @@index([expiresAt])
+  @@map("robots_cache")
+}
+
+// n8n workflow support: track API usage / quota
+model ApiQuota {
+  id        String   @id @default(cuid())
+  service   String   @map("service")     // e.g. "google_cse", "openai"
+  period    String   @map("period")     // e.g. "2024-01" for monthly
+  count     Int      @default(0) @map("count")
+  limit     Int?     @map("limit")      // optional quota limit
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@unique([service, period])
+  @@index([service])
+  @@map("api_quota")
+}
+
+// n8n workflow support: generic metrics
+model MetricsTracking {
+  id         String   @id @default(cuid())
+  metricName String   @map("metric_name")
+  value      Json?    @map("value")      // numeric or structured
+  dimensions Json?    @map("dimensions") // e.g. { source: "n8n", workflow: "hunt" }
+  source     String?  @map("source")
+  createdAt  DateTime @default(now()) @map("created_at")
+
+  @@index([metricName])
+  @@index([createdAt])
+  @@map("metrics_tracking")
+}
+
+// n8n workflow support: performance timing
+model PerformanceMetrics {
+  id         String   @id @default(cuid())
+  operation  String   @map("operation")
+  durationMs Int      @map("duration_ms")
+  metadata   Json?    @map("metadata")
+  source     String?  @map("source")
+  createdAt  DateTime @default(now()) @map("created_at")
+  // n8n alignment columns (Expert Hunter workflow)
+  projectId           String?   @map("project_id")
+  expertName          String?   @map("expert_name")
+  processingDurationMs Int?    @map("processing_duration_ms")
+  sourcesScraped      Int?     @map("sources_scraped")
+  identityConfidence  Float?   @map("identity_confidence")
+  linkedinFound       Int?     @map("linkedin_found")
+  cacheHit            Int?     @map("cache_hit")
+  timestamp           DateTime? @map("timestamp")
+  executionId         String?  @map("execution_id")
+
+  @@index([operation])
+  @@index([createdAt])
+  @@index([projectId])
+  @@map("performance_metrics")
+}
+
+// n8n workflow support: error tracking
+model ErrorLog {
+  id       String   @id @default(cuid())
+  message  String   @map("message")  @db.Text
+  stack    String?  @map("stack")    @db.Text
+  context  Json?    @map("context")
+  source   String?  @map("source")   // e.g. "n8n", "webhook"
+  severity String?  @map("severity") // e.g. "error", "warn"
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([source])
+  @@index([createdAt])
+  @@index([severity])
+  @@map("error_logs")
+}
+
+// n8n Expert Hunter: activity_log (Log Activity node)
+model ActivityLog {
+  id          String    @id @default(cuid())
+  eventType   String?   @map("event_type")
+  projectId   String?   @map("project_id")
+  expertName  String?   @map("expert_name")
+  status      String?   @map("status")
+  timestamp   DateTime? @map("timestamp")
+  executionId String?   @map("execution_id")
+  workflowId  String?   @map("workflow_id")
+
+  @@index([projectId])
+  @@index([timestamp])
+  @@map("activity_log")
+}
+
+// n8n Expert Hunter: error_log (Store Error Log node)
+model ErrorLogN8n {
+  id          String   @id @default(cuid())
+  errorType   String?  @map("error_type")
+  errorMessage String? @map("error_message") @db.Text
+  projectId   String?  @map("project_id")
+  expertName  String?  @map("expert_name")
+  timestamp   DateTime? @map("timestamp")
+  executionId String?  @map("execution_id")
+
+  @@index([projectId])
+  @@index([timestamp])
+  @@map("error_log")
+}
+
+// n8n Expert Hunter: metrics (Track Metrics node)
+model MetricsN8n {
+  id          String   @id @default(cuid())
+  metricType  String?  @map("metric_type")
+  projectId   String?  @map("project_id")
+  expertName  String?  @map("expert_name")
+  identityConfidence Float? @map("identity_confidence")
+  sourcesFound Int?   @map("sources_found")
+  linkedinFound Int?  @map("linkedin_found")
+  timestamp   DateTime? @map("timestamp")
+  executionId String?  @map("execution_id")
+
+  @@index([projectId])
+  @@index([timestamp])
+  @@map("metrics")
+}

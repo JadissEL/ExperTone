@@ -4,6 +4,8 @@
  * Service discovery: N8N_WEBHOOK_URL (full URL) or N8N_BASE_URL + /webhook/hunt
  */
 
+import { createHmac } from 'crypto';
+
 const N8N_BASE = process.env.N8N_BASE_URL?.replace(/\/$/, '') || 'http://localhost:5678';
 
 /** Production webhook URL for Expert Hunter workflow */
@@ -20,19 +22,53 @@ export interface HuntPayload {
   projectTitle?: string;
   filterCriteria?: Record<string, unknown>;
   query?: string;
+  brief?: string;
+  timestamp?: string;
   [key: string]: unknown;
 }
 
 /**
+ * Enriches payload for Expert Hunter workflow compatibility.
+ * - Adds timestamp for replay protection (n8n Check Timestamp)
+ * - Adds brief when present so n8n Has Brief? triggers AI parsing
+ */
+export function adaptHuntPayload(payload: HuntPayload): HuntPayload {
+  const brief = payload.brief ?? (payload.filterCriteria as { brief?: string })?.brief ?? (payload.query && payload.query.length > 150 ? payload.query : undefined);
+  return {
+    ...payload,
+    timestamp: new Date().toISOString(),
+    ...(brief ? { brief } : {}),
+  };
+}
+
+/**
+ * Sign payload for n8n Verify Webhook Signature (HMAC-SHA256).
+ * Uses SHARED_SECRET or N8N_WEBHOOK_SECRET; must match n8n $env.WEBHOOK_SECRET.
+ */
+export function signPayload(bodyString: string): string {
+  const secret = process.env.SHARED_SECRET || process.env.N8N_WEBHOOK_SECRET || '';
+  if (!secret) return '';
+  return createHmac('sha256', secret).update(bodyString).digest('hex');
+}
+
+/**
  * Trigger the Expert Hunter workflow via webhook.
- * Call this when starting a research project to kick off expert discovery.
+ * Payload is adapted for n8n compatibility (timestamp, brief).
+ * Signs request when SHARED_SECRET is set (n8n Verify Webhook Signature).
  */
 export async function triggerExpertHunt(payload: HuntPayload): Promise<{ ok: boolean; data?: unknown; error?: string }> {
+  const adapted = adaptHuntPayload(payload);
+  const bodyString = JSON.stringify(adapted);
+  const signature = signPayload(bodyString);
+
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (signature) headers['X-Webhook-Signature'] = signature;
+
   try {
     const res = await fetch(EXPERT_HUNTER_WEBHOOK_URL, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      headers,
+      body: bodyString,
     });
 
     if (!res.ok) {
